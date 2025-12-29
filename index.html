@@ -49,7 +49,18 @@
     .modeGroup{ display:flex; gap:10px; flex-wrap:wrap; }
     .mode{ border-radius:14px; padding:10px 14px; font-weight:700; cursor:pointer; box-shadow:var(--shadow), var(--ring); background:#fff; border:0; }
     .mode.active{ background:#111; color:#fff; }
-  </style>
+  
+/* Modal */
+.modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.45); z-index:50; padding:16px;}
+.modal.hidden{ display:none;}
+.modalCard{ width:min(520px, 96vw); background:#fff; border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.25); padding:14px 14px 12px;}
+.modalTitle{ font-weight:800; font-size:16px; margin-bottom:6px;}
+.modalDesc{ font-size:13px; color:#444; margin-bottom:10px; line-height:1.35;}
+.modalRow{ display:flex; gap:10px; align-items:center; margin:8px 0;}
+.smallLabel{ font-size:12px; color:#333; white-space:nowrap;}
+#loopPickSelect{ flex:1; padding:8px; border-radius:10px; border:1px solid #d6d6d6; }
+
+</style>
 </head>
 <body>
   <div class="toast" id="toast" style="display:none">
@@ -175,6 +186,8 @@
             <div class="kbox"><div>已选端点</div><div class="v" id="selectedText"></div></div>
             <div class="kbox"><div>轮到</div><div class="v" id="whoText"></div></div>
             <div class="kbox"><div>已落子（按放置者 黑/白）</div><div class="v" id="pieceCountText"></div></div>
+            <div class="kbox"><div>闭环奖励（已用 黑/白）</div><div class="v" id="loopUsedText"></div></div>
+            <div class="kbox"><div>分数加成（黑/白）</div><div class="v" id="bonusText"></div></div>
           </div>
         </div>
 
@@ -304,6 +317,26 @@ function segmentsIntersectAny(p1, p2, q1, q2) {
   return false;
 }
 
+function pointInPolygon(pt, poly) {
+  // 射线法：严格在内部才算（在边上/顶点上视为不在内部）
+  let inside = false;
+  const eps = 1e-9;
+  const onSeg = (a,b,p) => {
+    const cross = (b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x);
+    if (Math.abs(cross) > eps) return false;
+    const dot = (p.x-a.x)*(p.x-b.x)+(p.y-a.y)*(p.y-b.y);
+    return dot <= eps;
+  };
+  for (let i=0, j=poly.length-1; i<poly.length; j=i++) {
+    const a = poly[j], b = poly[i];
+    if (onSeg(a,b,pt)) return false;
+    const intersect = ((b.y>pt.y)!==(a.y>pt.y)) &&
+      (pt.x < (a.x-b.x)*(pt.y-b.y)/(a.y-b.y+0.0) + b.x);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 function hasIncidentLine(lines, key) {
   for (const l of lines) if (l.aKey === key || l.bKey === key) return true;
   return false;
@@ -392,6 +425,54 @@ function findPathKeys(adjMap, startKey, targetKey) {
   }
   path.reverse();
   return path;
+}
+
+function lineSegmentsIntersectNonEndpoint(pointsObj, e1, e2) {
+  const a1=pointsObj[e1.aKey], b1=pointsObj[e1.bKey];
+  const a2=pointsObj[e2.aKey], b2=pointsObj[e2.bKey];
+  if(!a1||!b1||!a2||!b2) return false;
+  const ends1=new Set([e1.aKey,e1.bKey]);
+  if(ends1.has(e2.aKey)||ends1.has(e2.bKey)) return false;
+  return segmentsIntersectAny(a1,b1,a2,b2);
+}
+
+function cycleFromNewEdge(pointsObj, linesArr, owner, aKey, bKey) {
+  // 若加入(aKey,bKey)会形成闭环，返回环顶点顺序 keys（不重复闭合点），否则 null
+  const adj = buildAdjacency(linesArr, pointsObj)[owner];
+  if (!adj.has(aKey) || !adj.has(bKey)) return null;
+  const path = findPathKeys(adj, aKey, bKey); // a..b
+  if (!path || path.length < 3) return null;  // 至少三点才有闭环意义
+  return path;
+}
+
+function cycleVerticesAllowed(pointsObj, owner, vkeys) {
+  for (const k of vkeys){
+    const p = pointsObj[k];
+    if (!p) return false;
+    if (p.owner !== owner) return false;
+    if (!(p.state === "original" || p.state === "converted")) return false;
+  }
+  return true;
+}
+
+function cycleIsSimple(pointsObj, vkeys) {
+  if (!vkeys || vkeys.length < 3) return false;
+  const edges = [];
+  for (let i=0;i<vkeys.length;i++){
+    edges.push({ aKey: vkeys[i], bKey: vkeys[(i+1)%vkeys.length] });
+  }
+  for (let i=0;i<edges.length;i++){
+    for (let j=i+1;j<edges.length;j++){
+      const e1=edges[i], e2=edges[j];
+      const share = (e1.aKey===e2.aKey)||(e1.aKey===e2.bKey)||(e1.bKey===e2.aKey)||(e1.bKey===e2.bKey);
+      if (share) {
+        // 相邻边或在顶点相接都不算交叉
+        continue;
+      }
+      if (lineSegmentsIntersectNonEndpoint(pointsObj, e1, e2)) return false;
+    }
+  }
+  return true;
 }
 
 function edgesFromPath(pathKeys) {
@@ -529,15 +610,16 @@ function updateIsolatedStates(nowTurn, pointsObj, linesArr) {
   return next;
 }
 
-function endOfTurnConversion(pointsObj) {
+function endOfTurnConversion(pointsObj, sealedPoints) {
   const next = { ...pointsObj };
   for (const [k, p] of Object.entries(next)) {
     if (p.state !== "isolated") continue;
     const owner = p.owner;
     const opp = 1 - owner;
     let threatened = false;
-    for (const q of Object.values(next)) {
+    for (const [qk, q] of Object.entries(next)) {
       if (q.owner !== opp) continue; // 对方所有点（含转化点）
+      if (sealedPoints && sealedPoints[opp] && sealedPoints[opp].includes(qk)) continue; // 闭环代价：闭环顶点不参与威胁
       if (floorDist(p, q) <= 3) { threatened = true; break; }
     }
     if (threatened) next[k] = { ...p, owner: opp, state: "converted" };
@@ -545,9 +627,9 @@ function endOfTurnConversion(pointsObj) {
   return next;
 }
 
-function settleEndOfTurn(nowTurn, pointsObj, linesArr) {
+function settleEndOfTurn(nowTurn, pointsObj, linesArr, sealedPoints) {
   const afterIso = updateIsolatedStates(nowTurn, pointsObj, linesArr);
-  return endOfTurnConversion(afterIso);
+  return endOfTurnConversion(afterIso, sealedPoints);
 }
 function settleStartOfTurn(nowTurn, pointsObj, linesArr) {
   return updateIsolatedStates(nowTurn, pointsObj, linesArr);
@@ -660,6 +742,12 @@ function nowMs(){ return Date.now(); }
 
 function defaultState() {
   return {
+    loopUsed: [0,0],
+    bonus: [0,0],
+    sealedPoints: [[],[]],
+    pendingLoop: null,
+    pendingFinalize: false,
+
     version: 1,
     turn: 0,
     points: {},
@@ -694,7 +782,7 @@ function applyAction(authoritativeState, action, actorIdx) {
     if (st.points[k]) return { ok:false, reason:"该位置已有点", state: st };
 
     st.points[k] = { x, y, owner: actorIdx, placedBy: actorIdx, state: "original", placedTurn: st.turn };
-    st.points = settleEndOfTurn(st.turn, st.points, st.lines);
+    st.points = settleEndOfTurn(st.turn, st.points, st.lines, st.sealedPoints);
     advanceTurn(st);
 
     // 回合推进后：先进行回合开始结算（孤立判定）
@@ -704,8 +792,10 @@ function applyAction(authoritativeState, action, actorIdx) {
     const go = isGameOverAtStart(st);
     if (go.over) {
       const { score } = computeScores(st.points, st.lines);
+      const s0 = score[0] + (st.bonus[0]||0);
+      const s1 = score[1] + (st.bonus[1]||0);
       st.gameOver = true;
-      st.winner = (score[0] === score[1]) ? "平局" : (score[0] > score[1] ? "黑方胜" : "白方胜");
+      st.winner = (s0 === s1) ? "平局" : (s0 > s1 ? "黑方胜" : "白方胜");
     }
 st.lastUpdatedAt = nowMs();
     return { ok:true, state: st };
@@ -717,7 +807,38 @@ st.lastUpdatedAt = nowMs();
     if (!r.ok) return { ok:false, reason:r.reason, state: st };
 
     st.lines.push(makeLine(st.points, actorIdx, aKey, bKey));
-    st.points = settleEndOfTurn(st.turn, st.points, st.lines);
+
+    // 闭环检测：只判定闭环；每人最多 2 次触发奖励选择（在本回合结算前选择）
+    const used = st.loopUsed[actorIdx] || 0;
+    if (used < 2) {
+      const vkeys = cycleFromNewEdge(st.points, st.lines.slice(0, -1), actorIdx, aKey, bKey);
+      if (vkeys && vkeys.length >= 3) {
+        // 闭环的顶点必须是己方原生点/转化点才算“有效闭环奖励”
+        if (cycleVerticesAllowed(st.points, actorIdx, vkeys)) {
+          const simple = cycleIsSimple(st.points, vkeys);
+          const poly = vkeys.map(k => ({ x: st.points[k].x, y: st.points[k].y }));
+          const opp = 1 - actorIdx;
+          const targets = [];
+          if (simple) {
+            for (const [pk, p] of Object.entries(st.points)) {
+              if (p.owner !== opp) continue;
+              if (pointInPolygon({ x: p.x, y: p.y }, poly)) {
+                targets.push({ k: pk, label: `(${p.x},${p.y})` });
+              }
+            }
+          }
+          // 将待处理闭环信息挂到全局 state，并把当前 st 写回（暂停推进回合）
+          // 注意：applyAction 只返回 state，弹窗由外层在 render 后显示
+          st.pendingLoop = { owner: actorIdx, vkeys, simple, targets };
+          st.pendingFinalize = true;
+          // 把 st 同步到全局 state（commit 里会做），并在 render() 中自动弹窗
+          st.lastUpdatedAt = nowMs();
+          return { ok:true, state: st };
+        }
+      }
+    }
+
+    st.points = settleEndOfTurn(st.turn, st.points, st.lines, st.sealedPoints);
     advanceTurn(st);
 
     // 回合推进后：先进行回合开始结算（孤立判定）
@@ -727,8 +848,10 @@ st.lastUpdatedAt = nowMs();
     const go = isGameOverAtStart(st);
     if (go.over) {
       const { score } = computeScores(st.points, st.lines);
+      const s0 = score[0] + (st.bonus[0]||0);
+      const s1 = score[1] + (st.bonus[1]||0);
       st.gameOver = true;
-      st.winner = (score[0] === score[1]) ? "平局" : (score[0] > score[1] ? "黑方胜" : "白方胜");
+      st.winner = (s0 === s1) ? "平局" : (s0 > s1 ? "黑方胜" : "白方胜");
     }
 st.lastUpdatedAt = nowMs();
     return { ok:true, state: st };
@@ -769,7 +892,42 @@ const els = {
   btnRules: document.getElementById("btnRules"),
   modePlace: document.getElementById("modePlace"),
   modeLine: document.getElementById("modeLine"),
+
+  loopModal: document.getElementById("loopModal"),
+  loopModalDesc: document.getElementById("loopModalDesc"),
+  loopOptA: document.getElementById("loopOptA"),
+  loopOptB: document.getElementById("loopOptB"),
+  loopPickRow: document.getElementById("loopPickRow"),
+  loopPickSelect: document.getElementById("loopPickSelect"),
+  loopPickConfirm: document.getElementById("loopPickConfirm"),
+  loopPickCancel: document.getElementById("loopPickCancel"),
+  loopUsedText: document.getElementById("loopUsedText"),
+  bonusText: document.getElementById("bonusText"),
+
 };
+
+function safeOn(el, ev, fn) {
+  if (!el) return;
+  el.addEventListener(ev, fn);
+}
+
+function refreshLoopEls() {
+  // 重新抓取闭环弹窗相关 DOM（避免 file:// 下脚本早于 DOM 执行导致 el 为 null）
+  els.loopModal = document.getElementById("loopModal");
+  els.loopModalDesc = document.getElementById("loopModalDesc");
+  els.loopOptA = document.getElementById("loopOptA");
+  els.loopOptB = document.getElementById("loopOptB");
+  els.loopPickRow = document.getElementById("loopPickRow");
+  els.loopPickSelect = document.getElementById("loopPickSelect");
+  els.loopPickConfirm = document.getElementById("loopPickConfirm");
+  els.loopPickCancel = document.getElementById("loopPickCancel");
+
+  // 用 onclick 方式绑定（覆盖式、幂等），避免“第一次绑定时元素为 null 导致之后永远不绑定”的问题
+  if (els.loopOptA) els.loopOptA.onclick = chooseLoopA;
+  if (els.loopOptB) els.loopOptB.onclick = chooseLoopB;
+  if (els.loopPickConfirm) els.loopPickConfirm.onclick = confirmLoopB;
+  if (els.loopPickCancel) els.loopPickCancel.onclick = cancelLoopPick;
+}
 
 let state = defaultState();
 let mode = "place";
@@ -785,7 +943,124 @@ function showToast(msg){
   els.toast.style.display = "block";
 }
 function hideToast(){ els.toast.style.display = "none"; }
-els.toastClose.addEventListener("click", hideToast);
+safeOn(els.toastClose, "click", hideToast);
+
+function sealLoopVertices(owner, vkeys) {
+  const arr = state.sealedPoints[owner] || [];
+  const set = new Set(arr);
+  for (const k of vkeys) set.add(k);
+  state.sealedPoints[owner] = Array.from(set);
+}
+
+function showLoopModal(payload) {
+  refreshLoopEls();
+  // payload: { owner, vkeys, simple, poly, targets:[{k,label}] }
+  state.pendingLoop = payload;
+  state.pendingFinalize = true;
+
+  if (!els.loopModal) { showToast("UI错误：找不到闭环弹窗元素（请确保HTML完整）"); return; }
+  els.loopModal.classList.remove("hidden");
+  const who = payload.owner === 0 ? "黑方" : "白方";
+  els.loopModalDesc.textContent = `${who} 形成闭环，可选择奖励（本方已使用 ${state.loopUsed[payload.owner]}/2 次）。选择后，该闭环顶点将失去“改变孤立点归属”的能力。`;
+
+  els.loopOptA.disabled = false;
+  const enableB = payload.simple && payload.targets.length > 0;
+  els.loopOptB.disabled = !enableB;
+  els.loopOptB.textContent = enableB ? "② 环内转化 1 个对方点" : "② 环内转化 1 个对方点（不可用）";
+
+  els.loopPickRow.classList.add("hidden");
+  els.loopPickSelect.innerHTML = "";
+}
+
+function hideLoopModal() {
+  els.loopModal.classList.add("hidden");
+  els.loopPickRow.classList.add("hidden");
+}
+
+function finalizePendingTurn() {
+  // 闭环选择后才真正结束本回合：孤立/转化结算、推进回合、开始回合结算、终局检查
+  if (!state.pendingFinalize) return;
+  state.points = settleEndOfTurn(state.turn, state.points, state.lines, state.sealedPoints);
+  advanceTurn(state);
+  state.points = settleStartOfTurn(state.turn, state.points, state.lines);
+
+  const go = isGameOverAtStart(state);
+  if (go.over) {
+    const { score } = computeScores(state.points, state.lines);
+    const s0 = score[0] + (state.bonus[0]||0);
+    const s1 = score[1] + (state.bonus[1]||0);
+    state.gameOver = true;
+    state.winner = (s0 === s1) ? "平局" : (s0 > s1 ? "黑方胜" : "白方胜");
+  }
+  state.pendingFinalize = false;
+  state.pendingLoop = null;
+  hideLoopModal();
+  render();
+}
+
+function chooseLoopA() {
+  const pl = state.pendingLoop;
+  if (!pl) return;
+  const owner = pl.owner;
+  const used = state.loopUsed[owner] || 0;
+  if (used >= 2) { showToast("本方闭环奖励次数已用完"); return; }
+
+  const { score } = computeScores(state.points, state.lines);
+  const cur = score[owner] + (state.bonus[owner]||0);
+  const add = Math.min(cur * 0.2, 0.8);
+  state.bonus[owner] = (state.bonus[owner]||0) + add;
+  state.loopUsed[owner] = used + 1;
+  sealLoopVertices(owner, pl.vkeys);
+  showToast(`已选择：分数 +${add.toFixed(3)}（最多0.8）`);
+  finalizePendingTurn();
+}
+
+function chooseLoopB() {
+  const pl = state.pendingLoop;
+  if (!pl) return;
+  const owner = pl.owner;
+  const used = state.loopUsed[owner] || 0;
+  if (used >= 2) { showToast("本方闭环奖励次数已用完"); return; }
+  if (!(pl.simple && pl.targets.length > 0)) { showToast("该闭环无法定义内部或内部无对方点"); return; }
+
+  els.loopPickSelect.innerHTML = "";
+  for (const t of pl.targets) {
+    const opt = document.createElement("option");
+    opt.value = t.k;
+    opt.textContent = t.label;
+    els.loopPickSelect.appendChild(opt);
+  }
+  els.loopPickRow.classList.remove("hidden");
+}
+
+function confirmLoopB() {
+  const pl = state.pendingLoop;
+  if (!pl) return;
+  const owner = pl.owner;
+  const used = state.loopUsed[owner] || 0;
+  if (used >= 2) { showToast("本方闭环奖励次数已用完"); return; }
+
+  const k = els.loopPickSelect.value;
+  if (!k || !state.points[k]) { showToast("请选择要转化的点"); return; }
+  const opp = 1 - owner;
+  if (state.points[k].owner !== opp) { showToast("该点已不属于对方"); return; }
+
+  state.points[k] = { ...state.points[k], owner, state: "converted" };
+  state.loopUsed[owner] = used + 1;
+  sealLoopVertices(owner, pl.vkeys);
+  showToast("已选择：转化环内 1 个对方点");
+  finalizePendingTurn();
+}
+
+function cancelLoopPick() {
+  // 取消只隐藏选择行，不取消整个闭环奖励（仍需选 A 或 B）
+  els.loopPickRow.classList.add("hidden");
+}
+
+safeOn(els.loopOptA, "click", chooseLoopA);
+safeOn(els.loopOptB, "click", chooseLoopB);
+safeOn(els.loopPickConfirm, "click", confirmLoopB);
+safeOn(els.loopPickCancel, "click", cancelLoopPick);
 
 function setMode(m){
   mode = m;
@@ -849,6 +1124,13 @@ function svgEl(tag, attrs){
 }
 
 function render(){
+  // 若存在待选择的闭环奖励，自动弹出弹窗
+  if (state.pendingLoop) {
+    refreshLoopEls();
+    if (els.loopModal && els.loopModal.classList.contains('hidden')) {
+      showLoopModal(state.pendingLoop);
+    }
+  }
   const currentPlayer = currentPlayerToMove(state);
   els.turnNo.textContent = String(state.turn + 1);
   els.pillBlack.classList.toggle("current", currentPlayer===0 && !state.gameOver);
@@ -869,6 +1151,8 @@ function render(){
   if (els.pieceCountText) {
     const pc = countPieces(state.points);
     els.pieceCountText.textContent = `${pc[0]}/${MAX_PIECES} · ${pc[1]}/${MAX_PIECES}`;
+  if (els.loopUsedText) els.loopUsedText.textContent = `${state.loopUsed[0]}/2 · ${state.loopUsed[1]}/2`;
+  if (els.bonusText) els.bonusText.textContent = `${(state.bonus[0]||0).toFixed(3)} · ${(state.bonus[1]||0).toFixed(3)}`;
   }
   els.whoText.style.fontWeight = "900";
 
@@ -956,5 +1240,26 @@ function render(){
 
 render();
 </script>
+
+<!-- 闭环奖励弹窗 -->
+<div id="loopModal" class="modal hidden" aria-hidden="true">
+  <div class="modalCard">
+    <div class="modalTitle">闭环奖励（每人最多 2 次）</div>
+    <div class="modalDesc" id="loopModalDesc"></div>
+    <div class="modalRow">
+      <button id="loopOptA" class="btn primary">① 分数 +20%（最多 +0.8）</button>
+    </div>
+    <div class="modalRow">
+      <button id="loopOptB" class="btn" disabled>② 环内转化 1 个对方点</button>
+    </div>
+    <div class="modalRow hidden" id="loopPickRow">
+      <label class="smallLabel">选择要转化的点：</label>
+      <select id="loopPickSelect"></select>
+      <button id="loopPickConfirm" class="btn primary">确认</button>
+      <button id="loopPickCancel" class="btn">取消</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
