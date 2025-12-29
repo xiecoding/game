@@ -2,663 +2,785 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Isolaton and Relation — 双人同屏（纯静态 v2）</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Isolaton and Relation — 单机对战（纯离线单文件）</title>
   <style>
-    html, body { height: 100%; }
+    :root{
+      --bg:#fafafa; --card:#fff; --text:#111; --muted:#666; --line:#e6e6e6;
+      --black:#111827; --white:#f3f4f6; --accent:#2563eb; --warn:#f59e0b;
+      --shadow:0 1px 2px rgba(0,0,0,.06);
+      --ring:0 0 0 1px rgba(0,0,0,.08);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+    }
+    body{ margin:0; background:var(--bg); color:var(--text); }
+    .wrap{ max-width:1100px; margin:0 auto; padding:12px; }
+    .card{ background:var(--card); border-radius:18px; box-shadow:var(--shadow), var(--ring); padding:12px; }
+    .row{ display:flex; gap:12px; flex-wrap:wrap; }
+    .row-between{ display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .btn{ border:0; border-radius:14px; padding:10px 14px; font-weight:600; cursor:pointer; box-shadow:var(--shadow), var(--ring); background:#fff; }
+    .btn.primary{ background:#111; color:#fff; }
+    .btn.soft{ background:#f1f1f1; }
+    .btn:active{ transform:scale(.99); }
+    .pill{ display:inline-flex; align-items:center; gap:8px; border-radius:999px; padding:6px 10px; font-size:13px; box-shadow:var(--ring); background:#eee; }
+    .pill.current{ background:#111; color:#fff; }
+    .dot{ width:10px; height:10px; border-radius:50%; background:#111; }
+    .dot.white{ background:#777; }
+    .muted{ color:var(--muted); font-size:12px; line-height:1.5; }
+    .grid{ display:grid; gap:12px; grid-template-columns: 1fr; }
+    @media(min-width:980px){ .grid{ grid-template-columns: 1fr 360px; } }
+    .legend{ display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+    .legend-item{ display:flex; align-items:center; gap:10px; font-size:12px; color:#333; }
+    .toast{ position:fixed; left:50%; top:10px; transform:translateX(-50%); z-index:99; max-width:min(92vw,720px); }
+    .toastbox{ background:#111; color:#fff; border-radius:14px; padding:10px 12px; box-shadow:0 10px 30px rgba(0,0,0,.2); display:flex; align-items:center; gap:10px; }
+    .toastbox button{ background:rgba(255,255,255,.12); color:#fff; border:0; border-radius:10px; padding:6px 10px; cursor:pointer; }
+    .boardWrap{ position:relative; }
+    svg{ width:100%; height:auto; touch-action:manipulation; user-select:none; -webkit-user-select:none; }
+    .overlay{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; padding:12px; }
+    .overlay.show{ display:flex; }
+    .overlay .panel{ width:min(520px,92%); background:rgba(255,255,255,.95); backdrop-filter: blur(6px);
+      border-radius:18px; padding:16px; box-shadow:0 14px 40px rgba(0,0,0,.18), var(--ring);
+    }
+    .scoreGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px; }
+    .scoreBox{ background:#f6f6f6; border-radius:16px; padding:10px; box-shadow:var(--ring); }
+    .scoreBox .big{ font-size:20px; font-weight:800; margin-top:4px; }
+    .smallGrid{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px; }
+    .kbox{ background:#f6f6f6; border-radius:16px; padding:10px; box-shadow:var(--ring); font-size:12px; }
+    .kbox .v{ font-size:16px; font-weight:800; margin-top:4px; }
+    .modeGroup{ display:flex; gap:10px; flex-wrap:wrap; }
+    .mode{ border-radius:14px; padding:10px 14px; font-weight:700; cursor:pointer; box-shadow:var(--shadow), var(--ring); background:#fff; border:0; }
+    .mode.active{ background:#111; color:#fff; }
   </style>
 </head>
-<body class="bg-neutral-50">
-  <div id="root"></div>
+<body>
+  <div class="toast" id="toast" style="display:none">
+    <div class="toastbox">
+      <div id="toastMsg" style="word-break:break-word;"></div>
+      <button id="toastClose">关闭</button>
+    </div>
+  </div>
 
-  <script type="text/babel">
-    const { useEffect, useMemo, useState } = React;
-
-    const N = 16;
-
-    function floorDist(a, b) {
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      return Math.floor(Math.hypot(dx, dy));
-    }
-    function ceilLen(a, b) {
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      return Math.ceil(Math.hypot(dx, dy));
-    }
-    function isDiagonal(a, b) {
-      const dx = Math.abs(a.x - b.x);
-      const dy = Math.abs(a.y - b.y);
-      return dx === dy && dx !== 0;
-    }
-
-    function segmentLatticeIntersection(p1, p2, q1, q2) {
-      const eps = 1e-9;
-
-      const onSegment = (a, b, c) =>
-        Math.min(a.x, c.x) - eps <= b.x &&
-        b.x <= Math.max(a.x, c.x) + eps &&
-        Math.min(a.y, c.y) - eps <= b.y &&
-        b.y <= Math.max(a.y, c.y) + eps;
-
-      const orient = (a, b, c) => {
-        const v = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
-        if (Math.abs(v) < eps) return 0;
-        return v > 0 ? 1 : 2;
-      };
-
-      const shareEndpoint = (a, b, c, d) => {
-        const eq = (u, v) => u.x === v.x && u.y === v.y;
-        if (eq(a, c)) return a;
-        if (eq(a, d)) return a;
-        if (eq(b, c)) return b;
-        if (eq(b, d)) return b;
-        return null;
-      };
-
-      const shared = shareEndpoint(p1, p2, q1, q2);
-      if (shared) return shared;
-
-      const o1 = orient(p1, p2, q1);
-      const o2 = orient(p1, p2, q2);
-      const o3 = orient(q1, q2, p1);
-      const o4 = orient(q1, q2, p2);
-
-      const intersects =
-        (o1 !== o2 && o3 !== o4) ||
-        (o1 === 0 && onSegment(p1, q1, p2)) ||
-        (o2 === 0 && onSegment(p1, q2, p2)) ||
-        (o3 === 0 && onSegment(q1, p1, q2)) ||
-        (o4 === 0 && onSegment(q1, p2, q2));
-
-      if (!intersects) return null;
-
-      if (o1 === 0 && onSegment(p1, q1, p2)) return q1;
-      if (o2 === 0 && onSegment(p1, q2, p2)) return q2;
-      if (o3 === 0 && onSegment(q1, p1, q2)) return p1;
-      if (o4 === 0 && onSegment(q1, p2, q2)) return p2;
-
-      const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
-      const x3 = q1.x, y3 = q1.y, x4 = q2.x, y4 = q2.y;
-
-      const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-      if (Math.abs(denom) < eps) return null;
-
-      const px =
-        ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom;
-      const py =
-        ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom;
-
-      const ix = Math.round(px);
-      const iy = Math.round(py);
-
-      if (Math.abs(px - ix) < 1e-6 && Math.abs(py - iy) < 1e-6) {
-        const I = { x: ix, y: iy };
-        if (onSegment(p1, I, p2) && onSegment(q1, I, q2)) return I;
-      }
-      return null;
-    }
-
-    function keyOf(x, y) { return `${x},${y}`; }
-
-    function PlayerPill({ player, current }) {
-      const label = player === 0 ? "黑方" : "白方";
-      return (
-        <span className={"inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm " + (current ? "bg-black text-white" : "bg-neutral-200 text-neutral-900")}>
-          <span className={"h-2.5 w-2.5 rounded-full " + (player === 0 ? "bg-white" : "bg-neutral-700")} />
-          {label}{current ? "（回合）" : ""}
-        </span>
-      );
-    }
-
-    function ModeButton({ active, onClick, children }) {
-      return (
-        <button
-          onClick={onClick}
-          className={"rounded-2xl px-4 py-2 text-sm font-medium shadow-sm ring-1 transition active:scale-[0.99] " +
-            (active ? "bg-neutral-900 text-white ring-neutral-900" : "bg-white text-neutral-900 ring-neutral-200 hover:bg-neutral-50")}
-        >
-          {children}
-        </button>
-      );
-    }
-
-    function Toast({ msg, onClose }) {
-      if (!msg) return null;
-      return (
-        <div className="fixed left-1/2 top-4 z-50 -translate-x-1/2">
-          <div className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm text-white shadow-lg">
-            <div className="flex items-center gap-3">
-              <div className="max-w-[70vw] break-words">{msg}</div>
-              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs hover:bg-white/15" onClick={onClose}>关闭</button>
-            </div>
-          </div>
+  <div class="wrap">
+    <div class="card">
+      <div class="row-between">
+        <div class="row" style="align-items:center;">
+          <div class="pill"><span style="font-weight:800;">模式</span>：<span style="font-weight:800;">本地单机对战</span></div>
+          <div class="muted">纯离线单文件：不依赖任何外部 CDN，电脑/手机浏览器直接打开即可。</div>
         </div>
-      );
-    }
+        <div class="row">
+          <button class="btn primary" id="btnReset">重置对局</button>
+          <button class="btn" id="btnRules">规则提示</button>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:8px;">
+        ✅ 回合顺序：回合开始先检查原生点是否变孤立；回合结束先更新孤立，再判定孤立点是否被对方转化。<br/>
+        ✅ 距离：点与点欧氏距离<strong>向下取整</strong>；线段计分长度为欧氏长度<strong>向上取整</strong>。<br/>
+        ✅ 无环：封闭图形只以<strong>己方当前拥有的点</strong>为顶点判定；双方线段不组合判“封闭”。
+      </div>
+    </div>
 
-    function hasIncidentLine(lines, key) {
-      for (const l of lines) if (l.aKey === key || l.bKey === key) return true;
-      return false;
-    }
+    <div class="grid" style="margin-top:12px;">
+      <div>
+        <div class="card">
+          <div class="row-between" style="padding:2px 4px 10px 4px;">
+            <div class="row" style="align-items:center;">
+              <span class="pill" id="pillBlack"><span class="dot"></span>黑方</span>
+              <span class="pill" id="pillWhite"><span class="dot white"></span>白方</span>
+            </div>
+            <div class="muted">回合：<span id="turnNo" style="font-weight:800;color:#111;"></span></div>
+          </div>
 
-    function App() {
-      const [points, setPoints] = useState(() => new Map());
-      const [lines, setLines] = useState([]);
-      const [turn, setTurn] = useState(0);
-      const currentPlayer = turn % 2;
+          <div class="boardWrap">
+            <svg id="board" viewBox="0 0 600 600" aria-label="board"></svg>
 
-      const [mode, setMode] = useState("place");
-      const [selectedKey, setSelectedKey] = useState(null);
-      const [toast, setToast] = useState("");
+            <div class="overlay" id="overlay">
+              <div class="panel">
+                <div style="font-size:20px;font-weight:900;">游戏结束</div>
+                <div class="muted" id="winnerText" style="margin-top:4px;"></div>
 
-      const [gameOver, setGameOver] = useState(false);
-      const [winner, setWinner] = useState(null);
-
-      const pointByKey = (k, map = points) => map.get(k);
-
-      const ownedKeys = useMemo(() => {
-        const arr = [[], []];
-        points.forEach((p, k) => { (p.owner === 0 ? arr[0] : arr[1]).push(k); });
-        return arr;
-      }, [points]);
-
-      const adjacency = useMemo(() => {
-        const adj = [new Map(), new Map()];
-        for (const l of lines) {
-          const m = adj[l.owner];
-          if (!m.has(l.aKey)) m.set(l.aKey, new Set());
-          if (!m.has(l.bKey)) m.set(l.bKey, new Set());
-          m.get(l.aKey).add(l.bKey);
-          m.get(l.bKey).add(l.aKey);
-        }
-        return adj;
-      }, [lines]);
-
-      const lineCrossCountWithOpponent = (a, b, owner) => {
-        const opp = 1 - owner;
-        let count = 0;
-        for (const l of lines) {
-          if (l.owner !== opp) continue;
-          const p1 = pointByKey(l.aKey);
-          const p2 = pointByKey(l.bKey);
-          if (!p1 || !p2) continue;
-          const inter = segmentLatticeIntersection(a, b, p1, p2);
-          if (inter) count += 1;
-          if (count > 1) break;
-        }
-        return count;
-      };
-
-      const wouldCreateCycle = (owner, aKey, bKey) => {
-        const adj = adjacency[owner];
-        if (aKey === bKey) return true;
-        if (!adj.has(aKey) || !adj.has(bKey)) return false;
-        const seen = new Set([aKey]);
-        const stack = [aKey];
-        while (stack.length) {
-          const cur = stack.pop();
-          const ns = adj.get(cur);
-          if (!ns) continue;
-          for (const nx of ns) {
-            if (nx === bKey) return true;
-            if (!seen.has(nx)) { seen.add(nx); stack.push(nx); }
-          }
-        }
-        return false;
-      };
-
-      const isLegalLine = (owner, aKey, bKey) => {
-        const pa = pointByKey(aKey);
-        const pb = pointByKey(bKey);
-        if (!pa || !pb) return { ok: false, reason: "端点不存在" };
-        if (pa.owner !== owner || pb.owner !== owner) return { ok: false, reason: "只能连接己方点" };
-        if (aKey === bKey) return { ok: false, reason: "不能连接同一点" };
-
-        for (const l of lines) {
-          if (l.owner !== owner) continue;
-          if ((l.aKey === aKey && l.bKey === bKey) || (l.aKey === bKey && l.bKey === aKey)) {
-            return { ok: false, reason: "该连线已存在" };
-          }
-        }
-
-        const d = floorDist(pa, pb);
-        if (d > 5) return { ok: false, reason: "距离超过 5（欧氏距离向下取整）" };
-        if (wouldCreateCycle(owner, aKey, bKey)) return { ok: false, reason: "禁止形成封闭图形（无环）" };
-
-        const crosses = lineCrossCountWithOpponent(pa, pb, owner);
-        const diag = isDiagonal(pa, pb);
-        if (!diag && crosses > 0) return { ok: false, reason: "非斜线不能穿过对方连线" };
-        if (diag && crosses > 1) return { ok: false, reason: "斜线最多穿过对方连线 1 次" };
-        return { ok: true };
-      };
-
-      const computeIsolatedForPoint = (p, nowTurn, map, linesForCheck) => {
-        if (p.state === "converted") return false;
-        if (p.state !== "original" && p.state !== "isolated") return false;
-        if (nowTurn < p.placedTurn + 2) return false;
-        if (hasIncidentLine(linesForCheck, p.key)) return false;
-
-        for (const [k2, q] of map.entries()) {
-          if (k2 === p.key) continue;
-          if (q.owner !== p.owner) continue;
-          if (floorDist(p, { ...q, key: k2 }) <= 3) return false;
-        }
-        return true;
-      };
-
-      const updateIsolatedStates = (nowTurn, map, linesForCheck) => {
-        const next = new Map(map);
-        for (const [k, p] of next.entries()) {
-          const p2 = { ...p, key: k };
-          if (p2.state === "converted") continue;
-          const shouldBeIso = computeIsolatedForPoint(p2, nowTurn, next, linesForCheck);
-          if (shouldBeIso && p2.state === "original") next.set(k, { ...p2, state: "isolated" });
-          if (!shouldBeIso && p2.state === "isolated") next.set(k, { ...p2, state: "original" });
-        }
-        return next;
-      };
-
-      const endOfTurnConversion = (map) => {
-        const next = new Map(map);
-        for (const [k, p] of next.entries()) {
-          if (p.state !== "isolated") continue;
-          const owner = p.owner;
-          const opp = 1 - owner;
-          const P = { ...p, key: k };
-
-          let threatened = false;
-          for (const [k2, q] of next.entries()) {
-            if (q.owner !== opp) continue;
-            const Q = { ...q, key: k2 };
-            if (floorDist(P, Q) <= 3) { threatened = true; break; }
-          }
-          if (threatened) next.set(k, { ...p, owner: opp, state: "converted" });
-        }
-        return next;
-      };
-
-      const settleEndOfTurn = (nowTurn, map, linesForCheck) => {
-        const afterIso = updateIsolatedStates(nowTurn, map, linesForCheck);
-        return endOfTurnConversion(afterIso);
-      };
-
-      const computeScores = () => {
-        const totalLen = [0, 0];
-        for (const l of lines) totalLen[l.owner] += l.lenCeil;
-
-        const denom = [0, 0];
-        points.forEach((p) => {
-          if (p.owner === 0 && p.state !== "converted") denom[0] += 1;
-          if (p.owner === 1 && p.state !== "converted") denom[1] += 1;
-        });
-
-        const score = [0, 0];
-        for (let i = 0; i < 2; i++) {
-          if (denom[i] === 0) score[i] = totalLen[i] > 0 ? Infinity : 0;
-          else score[i] = totalLen[i] / denom[i];
-        }
-        return { totalLen, denom, score };
-      };
-
-      const { totalLen, denom, score } = useMemo(computeScores, [lines, points]);
-      const allEmptyCount = useMemo(() => N * N - points.size, [points]);
-
-      const hasAnyLegalLine = (owner) => {
-        const keys = ownedKeys[owner];
-        for (let i = 0; i < keys.length; i++) {
-          for (let j = i + 1; j < keys.length; j++) {
-            const r = isLegalLine(owner, keys[i], keys[j]);
-            if (r.ok) return true;
-          }
-        }
-        return false;
-      };
-
-      const checkGameOverAtStart = () => {
-        const canPlace = allEmptyCount > 0;
-        const canLine = hasAnyLegalLine(currentPlayer);
-        if (!canPlace && !canLine) {
-          setGameOver(true);
-          const s0 = score[0], s1 = score[1];
-          if (s0 === s1) setWinner("平局");
-          else setWinner(s0 > s1 ? "黑方胜" : "白方胜");
-          return true;
-        }
-        return false;
-      };
-
-      useEffect(() => {
-        if (gameOver) return;
-        setPoints((prev) => updateIsolatedStates(turn, prev, lines));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [turn]);
-
-      useEffect(() => {
-        if (gameOver) return;
-        const t = setTimeout(() => { checkGameOverAtStart(); }, 0);
-        return () => clearTimeout(t);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [turn, points, lines]);
-
-      const advanceTurn = () => {
-        setSelectedKey(null);
-        setMode("place");
-        setTurn((t) => t + 1);
-      };
-
-      const placePoint = (x, y) => {
-        if (gameOver) return;
-        const k = keyOf(x, y);
-        if (points.has(k)) { setToast("该位置已有点"); return; }
-
-        const placed = new Map(points);
-        placed.set(k, { x, y, owner: currentPlayer, state: "original", placedTurn: turn });
-
-        const settled = settleEndOfTurn(turn, placed, lines);
-        setPoints(settled);
-        advanceTurn();
-      };
-
-      const addLine = (aKey, bKey) => {
-        if (gameOver) return;
-        const r = isLegalLine(currentPlayer, aKey, bKey);
-        if (!r.ok) { setToast(r.reason); return; }
-
-        const a = pointByKey(aKey);
-        const b = pointByKey(bKey);
-        const lenCeil = ceilLen(a, b);
-
-        const nextLines = [...lines, {
-          id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          aKey, bKey, owner: currentPlayer, lenCeil
-        }];
-
-        const settled = settleEndOfTurn(turn, points, nextLines);
-        setLines(nextLines);
-        setPoints(settled);
-        advanceTurn();
-      };
-
-      const onTapGrid = (x, y) => {
-        if (gameOver) return;
-        if (mode === "place") { placePoint(x, y); return; }
-
-        const k = keyOf(x, y);
-        const p = pointByKey(k);
-        if (!p) { setToast("连线模式下只能点选已有点"); return; }
-        if (p.owner !== currentPlayer) { setToast("只能选择己方点作为端点"); return; }
-
-        if (!selectedKey) { setSelectedKey(k); return; }
-        if (selectedKey === k) { setSelectedKey(null); return; }
-        addLine(selectedKey, k);
-      };
-
-      const reset = () => {
-        setPoints(new Map());
-        setLines([]);
-        setTurn(0);
-        setMode("place");
-        setSelectedKey(null);
-        setToast("");
-        setGameOver(false);
-        setWinner(null);
-      };
-
-      const padding = 24;
-      const viewSize = 600;
-      const step = (viewSize - padding * 2) / (N - 1);
-      const toSvg = (x, y) => ({ sx: padding + x * step, sy: padding + y * step });
-      const uiScore = (v) => (v === Infinity ? "∞" : v.toFixed(3));
-
-      return (
-        <div className="min-h-screen bg-neutral-50 text-neutral-900">
-          <Toast msg={toast} onClose={() => setToast("")} />
-
-          <div className="mx-auto max-w-6xl px-4 py-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-              <div className="w-full lg:flex-1">
-                <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-neutral-200">
-                  <div className="flex items-center justify-between gap-3 px-2 py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <PlayerPill player={0} current={currentPlayer === 0 && !gameOver} />
-                      <PlayerPill player={1} current={currentPlayer === 1 && !gameOver} />
-                    </div>
-                    <div className="text-sm text-neutral-600">回合：<span className="font-semibold text-neutral-900">{turn + 1}</span></div>
+                <div class="scoreGrid">
+                  <div class="scoreBox">
+                    <div style="font-weight:800;">黑方</div>
+                    <div class="muted" id="blackDetail"></div>
+                    <div class="big" id="blackScore"></div>
                   </div>
-
-                  <div className="relative">
-                    <svg className="h-[min(78vh,640px)] w-full touch-manipulation select-none" viewBox={`0 0 ${viewSize} ${viewSize}`}>
-                      {Array.from({ length: N }).map((_, i) => {
-                        const x = padding + i * step;
-                        return (
-                          <g key={`g-${i}`}>
-                            <line x1={x} y1={padding} x2={x} y2={viewSize - padding} stroke="#e5e7eb" strokeWidth={1} />
-                            <line x1={padding} y1={x} x2={viewSize - padding} y2={x} stroke="#e5e7eb" strokeWidth={1} />
-                          </g>
-                        );
-                      })}
-
-                      {lines.map((l) => {
-                        const a = points.get(l.aKey);
-                        const b = points.get(l.bKey);
-                        if (!a || !b) return null;
-                        const { sx: x1, sy: y1 } = toSvg(a.x, a.y);
-                        const { sx: x2, sy: y2 } = toSvg(b.x, b.y);
-                        const stroke = l.owner === 0 ? "#111827" : "#6b7280";
-                        return <line key={l.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={3} opacity={0.95} />;
-                      })}
-
-                      {selectedKey && points.get(selectedKey) ? (() => {
-                        const p = points.get(selectedKey);
-                        const { sx, sy } = toSvg(p.x, p.y);
-                        return <circle cx={sx} cy={sy} r={12} fill="none" stroke="#2563eb" strokeWidth={3} />;
-                      })() : null}
-
-                      {Array.from(points.entries()).map(([k, p]) => {
-                        const { sx, sy } = toSvg(p.x, p.y);
-                        const baseFill = p.owner === 0 ? "#111827" : "#f3f4f6";
-                        const baseStroke = "#111827";
-
-                        const isConverted = p.state === "converted";
-                        const isIsolated = p.state === "isolated";
-
-                        const r = isConverted ? 7 : 8;
-                        const strokeDash = isConverted ? "4 3" : "";
-                        const opacity = isIsolated ? 0.95 : 1;
-
-                        return (
-                          <g key={k}>
-                            {/* 额外标识：孤立点外圈 */}
-                            {isIsolated ? (
-                              <circle
-                                cx={sx}
-                                cy={sy}
-                                r={r + 5}
-                                fill="none"
-                                stroke="#f59e0b"
-                                strokeWidth={3}
-                                strokeDasharray="6 4"
-                                opacity={0.95}
-                              />
-                            ) : null}
-
-                            {/* 点本体 */}
-                            <circle
-                              cx={sx}
-                              cy={sy}
-                              r={r}
-                              fill={baseFill}
-                              stroke={baseStroke}
-                              strokeWidth={2}
-                              strokeDasharray={strokeDash}
-                              opacity={opacity}
-                            />
-
-                            {/* 转化点中心标记 */}
-                            {isConverted ? (
-                              <circle
-                                cx={sx}
-                                cy={sy}
-                                r={3}
-                                fill={p.owner === 0 ? "#f9fafb" : "#111827"}
-                                opacity={0.9}
-                              />
-                            ) : null}
-                          </g>
-                        );
-                      })}
-
-                      {Array.from({ length: N }).flatMap((_, y) =>
-                        Array.from({ length: N }).map((__, x) => {
-                          const { sx, sy } = toSvg(x, y);
-                          return (
-                            <circle key={`hit-${x}-${y}`} cx={sx} cy={sy} r={12} fill="transparent"
-                              onPointerDown={(e) => { e.preventDefault(); onTapGrid(x, y); }} />
-                          );
-                        })
-                      )}
-                    </svg>
-
-                    {gameOver ? (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-[min(520px,92%)] rounded-3xl bg-white/95 p-5 text-center shadow-xl ring-1 ring-neutral-200 backdrop-blur">
-                          <div className="text-xl font-semibold">游戏结束</div>
-                          <div className="mt-2 text-sm text-neutral-700">{winner || "已结算"}</div>
-                          <div className="mt-4 grid grid-cols-2 gap-3 text-left">
-                            <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                              <div className="text-sm font-semibold">黑方</div>
-                              <div className="mt-1 text-xs text-neutral-600">线长：{totalLen[0]} / 原生点：{denom[0]}</div>
-                              <div className="mt-1 text-lg font-semibold">{uiScore(score[0])}</div>
-                            </div>
-                            <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                              <div className="text-sm font-semibold">白方</div>
-                              <div className="mt-1 text-xs text-neutral-600">线长：{totalLen[1]} / 原生点：{denom[1]}</div>
-                              <div className="mt-1 text-lg font-semibold">{uiScore(score[1])}</div>
-                            </div>
-                          </div>
-                          <div className="mt-4 flex justify-center gap-3">
-                            <button className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm" onClick={reset}>重新开始</button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
+                  <div class="scoreBox">
+                    <div style="font-weight:800;">白方</div>
+                    <div class="muted" id="whiteDetail"></div>
+                    <div class="big" id="whiteScore"></div>
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-neutral-200">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      <ModeButton active={mode === "place"} onClick={() => { setMode("place"); setSelectedKey(null); }}>放点</ModeButton>
-                      <ModeButton active={mode === "line"} onClick={() => { setMode("line"); setSelectedKey(null); }}>连线</ModeButton>
-                      <button className="rounded-2xl bg-white px-4 py-2 text-sm font-medium shadow-sm ring-1 ring-neutral-200 hover:bg-neutral-50"
-                        onClick={() => setToast("提示：距离判定用欧氏向下取整；计分线长用欧氏向上取整。转化只在回合结束判定：先更新孤立，再检查孤立点半径3内是否有任意对方点（含转化点）。")}>
-                        规则提示
-                      </button>
-                    </div>
-                    <button className="rounded-2xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 ring-1 ring-neutral-200 hover:bg-neutral-200" onClick={reset}>重置</button>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      <div className="text-sm font-semibold">黑方计分</div>
-                      <div className="mt-1 text-xs text-neutral-600">线长：{totalLen[0]}（ceil 求和）</div>
-                      <div className="text-xs text-neutral-600">原生点：{denom[0]}（不含转化点）</div>
-                      <div className="mt-1 text-lg font-semibold">{uiScore(score[0])}</div>
-                    </div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      <div className="text-sm font-semibold">白方计分</div>
-                      <div className="mt-1 text-xs text-neutral-600">线长：{totalLen[1]}（ceil 求和）</div>
-                      <div className="text-xs text-neutral-600">原生点：{denom[1]}（不含转化点）</div>
-                      <div className="mt-1 text-lg font-semibold">{uiScore(score[1])}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-xs leading-5 text-neutral-600">
-                    <div className="font-semibold text-neutral-800">图例（点的含义）</div>
-                    <div className="mt-2 space-y-2">
-                      <div className="flex items-center gap-3">
-                        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                          <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
-                        </svg>
-                        <div className="text-xs text-neutral-700">原生点（普通点）</div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                          <circle cx="14" cy="14" r="13" fill="none" stroke="#f59e0b" stroke-width="3" stroke-dasharray="6 4" />
-                          <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
-                        </svg>
-                        <div className="text-xs text-neutral-700">孤立点（被标记为“孤立”的原生点）</div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                          <circle cx="14" cy="14" r="7" fill="#f3f4f6" stroke="#111827" stroke-width="2" stroke-dasharray="4 3" />
-                          <circle cx="14" cy="14" r="3" fill="#111827" opacity="0.9" />
-                        </svg>
-                        <div className="text-xs text-neutral-700">转化点（归属对手；可连线）</div>
-                      </div>
-                    </div>
-                    <div className="mt-2">转化只在回合结束判定：先更新孤立，再检查孤立点半径3内是否存在任意对方点（包括对方转化点）。</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="w-full lg:w-[360px]">
-                <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-neutral-200">
-                  <div className="text-sm font-semibold">操作说明</div>
-                  <div className="mt-2 space-y-2 text-sm text-neutral-700">
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      <div className="font-semibold">放点</div>
-                      <div className="mt-1 text-xs text-neutral-600">点击/轻触任意空格点放置原生点（允许自杀式放点）。</div>
-                    </div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      <div className="font-semibold">连线</div>
-                      <div className="mt-1 text-xs text-neutral-600">先点己方点选中，再点另一个己方点完成连线；重复点同一点可取消。</div>
-                    </div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      <div className="font-semibold">结算时点</div>
-                      <div className="mt-1 text-xs text-neutral-600">孤立状态会在回合开始更新；转化仅在回合结束执行（先更新孤立，再转化）。</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-neutral-200">
-                  <div className="text-sm font-semibold">当前规则参数</div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-neutral-700">
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">连线距离<div className="mt-1 text-sm font-semibold">≤ 5（floor）</div></div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">孤立半径<div className="mt-1 text-sm font-semibold">≤ 3（floor）</div></div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">线长计分<div className="mt-1 text-sm font-semibold">欧氏向上取整</div></div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">禁止结构<div className="mt-1 text-sm font-semibold">无环（森林）</div></div>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-neutral-200">
-                  <div className="text-sm font-semibold">对局信息</div>
-                  <div className="mt-2 space-y-2 text-xs text-neutral-700">
-                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200"><span>剩余空点</span><span className="font-semibold">{allEmptyCount}</span></div>
-                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200"><span>当前模式</span><span className="font-semibold">{mode === "place" ? "放点" : "连线"}</span></div>
-                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200"><span>已选端点</span><span className="font-semibold">{selectedKey || "无"}</span></div>
-                  </div>
+                <div style="display:flex;justify-content:center;gap:10px;margin-top:12px;">
+                  <button class="btn primary" id="btnRestart2">重新开始</button>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
 
-            <div className="mt-4 text-center text-xs text-neutral-500">
-              Isolaton and Relation • 纯静态网页 v2 • 双人同屏（手机/电脑自适应）
+        <div class="card" style="margin-top:12px;">
+          <div class="row-between">
+            <div class="modeGroup">
+              <button class="mode active" id="modePlace">放点</button>
+              <button class="mode" id="modeLine">连线</button>
+            </div>
+            <button class="btn soft" id="btnReset2">重置</button>
+          </div>
+
+          <div class="smallGrid">
+            <div class="scoreBox">
+              <div style="font-weight:800;">黑方计分</div>
+              <div class="muted" id="sBlackDetail"></div>
+              <div class="big" id="sBlackScore"></div>
+            </div>
+            <div class="scoreBox">
+              <div style="font-weight:800;">白方计分</div>
+              <div class="muted" id="sWhiteDetail"></div>
+              <div class="big" id="sWhiteScore"></div>
+            </div>
+          </div>
+
+          <div class="legend">
+            <div style="font-weight:800;font-size:13px;">图例（点的含义）</div>
+            <div class="legend-item">
+              <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
+              </svg>
+              <div>原生点（普通点）</div>
+            </div>
+            <div class="legend-item">
+              <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="14" cy="14" r="13" fill="none" stroke="#f59e0b" stroke-width="3" stroke-dasharray="6 4" />
+                <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
+              </svg>
+              <div>孤立点（外圈橙色虚线）</div>
+            </div>
+            <div class="legend-item">
+              <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="14" cy="14" r="7" fill="#f3f4f6" stroke="#111827" stroke-width="2" stroke-dasharray="4 3" />
+                <circle cx="14" cy="14" r="3" fill="#111827" opacity="0.9" />
+              </svg>
+              <div>转化点（虚线边框 + 中心点）</div>
             </div>
           </div>
         </div>
-      );
+      </div>
+
+      <div>
+        <div class="card">
+          <div style="font-weight:900;">对局信息</div>
+          <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
+            <div class="kbox"><div>剩余空点</div><div class="v" id="emptyCount"></div></div>
+            <div class="kbox"><div>当前模式</div><div class="v" id="modeText"></div></div>
+            <div class="kbox"><div>已选端点</div><div class="v" id="selectedText"></div></div>
+            <div class="kbox"><div>轮到</div><div class="v" id="whoText"></div></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <div style="font-weight:900;">参数</div>
+          <div class="smallGrid">
+            <div class="kbox">连线距离<div class="v">≤ 5（floor）</div></div>
+            <div class="kbox">孤立半径<div class="v">≤ 3（floor）</div></div>
+            <div class="kbox">线长计分<div class="v">欧氏向上取整</div></div>
+            <div class="kbox">禁止结构<div class="v">无环（森林）</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="muted" style="text-align:center;margin:12px 0;">Isolaton and Relation • 本地单机对战（纯离线单文件）</div>
+  </div>
+
+<script>
+/********************
+ * 核心规则（与联机版一致）
+ ********************/
+const N = 16;
+
+function floorDist(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.floor(Math.hypot(dx, dy));
+}
+function ceilLen(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.ceil(Math.hypot(dx, dy));
+}
+function isDiagonal(a, b) {
+  // 规则里的“斜线”= 非水平/非竖直（即 dx!=0 且 dy!=0）
+  // “直线”= 水平或竖直（dx==0 或 dy==0）
+  const dx = Math.abs(a.x - b.x);
+  const dy = Math.abs(a.y - b.y);
+  return dx !== 0 && dy !== 0;
+}
+function keyOf(x, y) { return `${x},${y}`; }
+
+function segmentLatticeIntersection(p1, p2, q1, q2) {
+  const eps = 1e-9;
+  const onSegment = (a, b, c) =>
+    Math.min(a.x, c.x) - eps <= b.x && b.x <= Math.max(a.x, c.x) + eps &&
+    Math.min(a.y, c.y) - eps <= b.y && b.y <= Math.max(a.y, c.y) + eps;
+
+  const orient = (a, b, c) => {
+    const v = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+    if (Math.abs(v) < eps) return 0;
+    return v > 0 ? 1 : 2;
+  };
+
+  const eq = (u, v) => u.x === v.x && u.y === v.y;
+  if (eq(p1, q1) || eq(p1, q2)) return p1;
+  if (eq(p2, q1) || eq(p2, q2)) return p2;
+
+  const o1 = orient(p1, p2, q1);
+  const o2 = orient(p1, p2, q2);
+  const o3 = orient(q1, q2, p1);
+  const o4 = orient(q1, q2, p2);
+
+  const intersects =
+    (o1 !== o2 && o3 !== o4) ||
+    (o1 === 0 && onSegment(p1, q1, p2)) ||
+    (o2 === 0 && onSegment(p1, q2, p2)) ||
+    (o3 === 0 && onSegment(q1, p1, q2)) ||
+    (o4 === 0 && onSegment(q1, p2, q2));
+
+  if (!intersects) return null;
+
+  if (o1 === 0 && onSegment(p1, q1, p2)) return q1;
+  if (o2 === 0 && onSegment(p1, q2, p2)) return q2;
+  if (o3 === 0 && onSegment(q1, p1, q2)) return p1;
+  if (o4 === 0 && onSegment(q1, p2, q2)) return p2;
+
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  const x3 = q1.x, y3 = q1.y, x4 = q2.x, y4 = q2.y;
+
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < eps) return null;
+
+  const px =
+    ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom;
+  const py =
+    ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom;
+
+  const ix = Math.round(px);
+  const iy = Math.round(py);
+
+  if (Math.abs(px - ix) < 1e-6 && Math.abs(py - iy) < 1e-6) {
+    const I = { x: ix, y: iy };
+    if (onSegment(p1, I, p2) && onSegment(q1, I, q2)) return I;
+  }
+  return null;
+}
+
+// 任意相交判定（不要求交点在格点上）：只要两线段几何上相交（包含端点/共线重叠）就算“穿过/被穿过”
+function segmentsIntersectAny(p1, p2, q1, q2) {
+  const eps = 1e-9;
+  const onSegment = (a, b, c) =>
+    Math.min(a.x, c.x) - eps <= b.x && b.x <= Math.max(a.x, c.x) + eps &&
+    Math.min(a.y, c.y) - eps <= b.y && b.y <= Math.max(a.y, c.y) + eps;
+
+  const orient = (a, b, c) => {
+    const v = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+    if (Math.abs(v) < eps) return 0;
+    return v > 0 ? 1 : 2;
+  };
+
+  const eq = (u, v) => u.x === v.x && u.y === v.y;
+  // 端点相同也算相交（你规则里“包含端点”）
+  if (eq(p1, q1) || eq(p1, q2) || eq(p2, q1) || eq(p2, q2)) return true;
+
+  const o1 = orient(p1, p2, q1);
+  const o2 = orient(p1, p2, q2);
+  const o3 = orient(q1, q2, p1);
+  const o4 = orient(q1, q2, p2);
+
+  if (o1 !== o2 && o3 !== o4) return true;
+  if (o1 === 0 && onSegment(p1, q1, p2)) return true;
+  if (o2 === 0 && onSegment(p1, q2, p2)) return true;
+  if (o3 === 0 && onSegment(q1, p1, q2)) return true;
+  if (o4 === 0 && onSegment(q1, p2, q2)) return true;
+
+  return false;
+}
+
+function hasIncidentLine(lines, key) {
+  for (const l of lines) if (l.aKey === key || l.bKey === key) return true;
+  return false;
+}
+
+function lineCrossCountWithOpponent(pointsObj, linesArr, a, b, owner) {
+  // 返回与“对方连线”的交点计数，按对方连线类型分类：diag=斜线，straight=直线
+  // 交点包含：共享端点、共享格点、以及在格点上的真实相交点（与你之前的判定一致）
+  const opp = 1 - owner;
+  let diag = 0;
+  let straight = 0;
+
+  for (const l of linesArr) {
+    if (l.owner !== opp) continue;
+    const p1 = pointsObj[l.aKey];
+    const p2 = pointsObj[l.bKey];
+    if (!p1 || !p2) continue;
+
+    const inter = segmentsIntersectAny(a, b, p1, p2);
+    if (!inter) continue;
+
+    if (isDiagonal(p1, p2)) diag += 1;
+    else straight += 1;
+  }
+  return { diag, straight };
+}
+
+function buildAdjacency(linesArr, pointsObj) {
+  // 只以“当前属于该玩家的点”作为顶点，判定该玩家是否形成环
+  const adj = [new Map(), new Map()];
+  for (const l of linesArr) {
+    const owner = l.owner;
+    const a = pointsObj[l.aKey];
+    const b = pointsObj[l.bKey];
+    if (!a || !b) continue;
+    if (a.owner !== owner || b.owner !== owner) continue;
+    const m = adj[owner];
+    if (!m.has(l.aKey)) m.set(l.aKey, new Set());
+    if (!m.has(l.bKey)) m.set(l.bKey, new Set());
+    m.get(l.aKey).add(l.bKey);
+    m.get(l.bKey).add(l.aKey);
+  }
+  return adj;
+}
+
+function wouldCreateCycle(adj, owner, aKey, bKey) {
+  const m = adj[owner];
+  if (aKey === bKey) return true;
+  if (!m.has(aKey) || !m.has(bKey)) return false;
+  const seen = new Set([aKey]);
+  const stack = [aKey];
+  while (stack.length) {
+    const cur = stack.pop();
+    const ns = m.get(cur);
+    if (!ns) continue;
+    for (const nx of ns) {
+      if (nx === bKey) return true;
+      if (!seen.has(nx)) { seen.add(nx); stack.push(nx); }
+    }
+  }
+  return false;
+}
+
+function isLegalLine(pointsObj, linesArr, owner, aKey, bKey) {
+  const pa = pointsObj[aKey];
+  const pb = pointsObj[bKey];
+  if (!pa || !pb) return { ok: false, reason: "端点不存在" };
+  if (pa.owner !== owner || pb.owner !== owner) return { ok: false, reason: "只能连接己方点" };
+  if (aKey === bKey) return { ok: false, reason: "不能连接同一点" };
+
+  for (const l of linesArr) {
+    if (l.owner !== owner) continue;
+    if ((l.aKey === aKey && l.bKey === bKey) || (l.aKey === bKey && l.bKey === aKey)) {
+      return { ok: false, reason: "该连线已存在" };
+    }
+  }
+
+  const d = floorDist(pa, pb);
+  if (d > 5) return { ok: false, reason: "距离超过 5（欧氏距离向下取整）" };
+
+  const adj = buildAdjacency(linesArr, pointsObj);
+  if (wouldCreateCycle(adj, owner, aKey, bKey)) return { ok: false, reason: "禁止形成封闭图形（无环）" };
+
+  const crosses = lineCrossCountWithOpponent(pointsObj, linesArr, pa, pb, owner);
+  const diagNew = isDiagonal(pa, pb);
+
+  // 你最新规则：
+  // 1) 斜线：可以穿过“对方斜线”，也能被对方斜线穿过（限制 1 次，包含端点/共享格点）；但不能穿过对方直线。
+  // 2) 直线：不能被任何线穿过；但直线可以穿过对方斜线（不限制次数）。
+  // 这里的穿过判定只针对“对方连线”，与原规则一致。
+
+  // 直线“不能被任何线穿过” => 等价于：任何新连线都不能与对方直线相交（否则对方直线被穿过）。
+  if (crosses.straight > 0) return { ok: false, reason: "直线不能被任何线穿过：禁止与对方直线相交（直线可穿过斜线，但斜线不可穿过直线）" };
+
+  if (diagNew) {
+    // 斜线与斜线的相交：最多 1 次（包含端点/共享格点）
+    if (crosses.diag > 1) return { ok: false, reason: "斜线与对方斜线最多相交 1 次" };
+  }
+
+
+  return { ok: true };
+}
+
+function computeIsolatedForPoint(pKey, p, nowTurn, pointsObj, linesArr) {
+  if (p.state === "converted") return false;
+  if (p.state !== "original" && p.state !== "isolated") return false;
+  if (nowTurn < p.placedTurn + 2) return false; // 自己下个回合开始才可孤立
+  if (hasIncidentLine(linesArr, pKey)) return false;
+
+  for (const [k2, q] of Object.entries(pointsObj)) {
+    if (k2 === pKey) continue;
+    if (q.owner !== p.owner) continue;
+    if (floorDist(p, q) <= 3) return false;
+  }
+  return true;
+}
+
+function updateIsolatedStates(nowTurn, pointsObj, linesArr) {
+  const next = { ...pointsObj };
+  for (const [k, p] of Object.entries(next)) {
+    if (p.state === "converted") continue;
+    const shouldIso = computeIsolatedForPoint(k, p, nowTurn, next, linesArr);
+    if (shouldIso && p.state === "original") next[k] = { ...p, state: "isolated" };
+    if (!shouldIso && p.state === "isolated") next[k] = { ...p, state: "original" };
+  }
+  return next;
+}
+
+function endOfTurnConversion(pointsObj) {
+  const next = { ...pointsObj };
+  for (const [k, p] of Object.entries(next)) {
+    if (p.state !== "isolated") continue;
+    const owner = p.owner;
+    const opp = 1 - owner;
+    let threatened = false;
+    for (const q of Object.values(next)) {
+      if (q.owner !== opp) continue; // 对方所有点（含转化点）
+      if (floorDist(p, q) <= 3) { threatened = true; break; }
+    }
+    if (threatened) next[k] = { ...p, owner: opp, state: "converted" };
+  }
+  return next;
+}
+
+function settleEndOfTurn(nowTurn, pointsObj, linesArr) {
+  const afterIso = updateIsolatedStates(nowTurn, pointsObj, linesArr);
+  return endOfTurnConversion(afterIso);
+}
+function settleStartOfTurn(nowTurn, pointsObj, linesArr) {
+  return updateIsolatedStates(nowTurn, pointsObj, linesArr);
+}
+
+function computeScores(pointsObj, linesArr) {
+  const totalLen = [0, 0];
+  for (const l of linesArr) totalLen[l.owner] += (l.lenCeil ?? 0);
+
+  const denom = [0, 0];
+  for (const p of Object.values(pointsObj)) {
+    if (p.owner === 0 && p.state !== "converted") denom[0] += 1;
+    if (p.owner === 1 && p.state !== "converted") denom[1] += 1;
+  }
+
+  const score = [0, 0];
+  for (let i = 0; i < 2; i++) {
+    if (denom[i] === 0) score[i] = totalLen[i] > 0 ? Infinity : 0;
+    else score[i] = totalLen[i] / denom[i];
+  }
+  return { totalLen, denom, score };
+}
+
+function allEmptyCount(pointsObj) {
+  return N * N - Object.keys(pointsObj).length;
+}
+
+function hasAnyLegalLineForPlayer(pointsObj, linesArr, owner) {
+  const keys = Object.entries(pointsObj).filter(([k,p]) => p.owner === owner).map(([k]) => k);
+  for (let i=0;i<keys.length;i++){
+    for (let j=i+1;j<keys.length;j++){
+      const r = isLegalLine(pointsObj, linesArr, owner, keys[i], keys[j]);
+      if (r.ok) return true;
+    }
+  }
+  return false;
+}
+
+function isGameOverAtStart(pointsObj, linesArr, playerToMove) {
+  const canPlace = allEmptyCount(pointsObj) > 0;
+  const canLine = hasAnyLegalLineForPlayer(pointsObj, linesArr, playerToMove);
+  return (!canPlace && !canLine);
+}
+
+function nowMs(){ return Date.now(); }
+
+function defaultState() {
+  return {
+    version: 1,
+    turn: 0,
+    points: {},
+    lines: [],
+    gameOver: false,
+    winner: null,
+    lastUpdatedAt: nowMs(),
+  };
+}
+
+function makeLine(pointsObj, owner, aKey, bKey) {
+  const a = pointsObj[aKey];
+  const b = pointsObj[bKey];
+  const lenCeil = ceilLen(a, b);
+  return { id: `${nowMs()}_${Math.random().toString(16).slice(2)}`, aKey, bKey, owner, lenCeil };
+}
+
+function applyAction(authoritativeState, action, actorIdx) {
+  let st = { ...authoritativeState, points: { ...authoritativeState.points }, lines: [...authoritativeState.lines] };
+
+  st.points = settleStartOfTurn(st.turn, st.points, st.lines);
+  if (st.gameOver) return { ok:false, reason:"游戏已结束", state: st };
+
+  const currentPlayer = st.turn % 2;
+  if (actorIdx !== currentPlayer) return { ok:false, reason:"不是当前回合玩家", state: st };
+
+  if (action.type === "place") {
+    const { x, y } = action;
+    const k = keyOf(x, y);
+    if (st.points[k]) return { ok:false, reason:"该位置已有点", state: st };
+
+    st.points[k] = { x, y, owner: actorIdx, state: "original", placedTurn: st.turn };
+    st.points = settleEndOfTurn(st.turn, st.points, st.lines);
+    st.turn += 1;
+
+    const nextToMove = st.turn % 2;
+    st.points = settleStartOfTurn(st.turn, st.points, st.lines);
+
+    if (isGameOverAtStart(st.points, st.lines, nextToMove)) {
+      const { score } = computeScores(st.points, st.lines);
+      st.gameOver = true;
+      st.winner = (score[0] === score[1]) ? "平局" : (score[0] > score[1] ? "黑方胜" : "白方胜");
+    }
+    st.lastUpdatedAt = nowMs();
+    return { ok:true, state: st };
+  }
+
+  if (action.type === "line") {
+    const { aKey, bKey } = action;
+    const r = isLegalLine(st.points, st.lines, actorIdx, aKey, bKey);
+    if (!r.ok) return { ok:false, reason:r.reason, state: st };
+
+    st.lines.push(makeLine(st.points, actorIdx, aKey, bKey));
+    st.points = settleEndOfTurn(st.turn, st.points, st.lines);
+    st.turn += 1;
+
+    const nextToMove = st.turn % 2;
+    st.points = settleStartOfTurn(st.turn, st.points, st.lines);
+
+    if (isGameOverAtStart(st.points, st.lines, nextToMove)) {
+      const { score } = computeScores(st.points, st.lines);
+      st.gameOver = true;
+      st.winner = (score[0] === score[1]) ? "平局" : (score[0] > score[1] ? "黑方胜" : "白方胜");
+    }
+    st.lastUpdatedAt = nowMs();
+    return { ok:true, state: st };
+  }
+
+  return { ok:false, reason:"未知操作", state: st };
+}
+
+/********************
+ * 渲染与交互
+ ********************/
+const els = {
+  toast: document.getElementById("toast"),
+  toastMsg: document.getElementById("toastMsg"),
+  toastClose: document.getElementById("toastClose"),
+  board: document.getElementById("board"),
+  overlay: document.getElementById("overlay"),
+  winnerText: document.getElementById("winnerText"),
+  blackDetail: document.getElementById("blackDetail"),
+  whiteDetail: document.getElementById("whiteDetail"),
+  blackScore: document.getElementById("blackScore"),
+  whiteScore: document.getElementById("whiteScore"),
+  sBlackDetail: document.getElementById("sBlackDetail"),
+  sWhiteDetail: document.getElementById("sWhiteDetail"),
+  sBlackScore: document.getElementById("sBlackScore"),
+  sWhiteScore: document.getElementById("sWhiteScore"),
+  turnNo: document.getElementById("turnNo"),
+  pillBlack: document.getElementById("pillBlack"),
+  pillWhite: document.getElementById("pillWhite"),
+  emptyCount: document.getElementById("emptyCount"),
+  modeText: document.getElementById("modeText"),
+  selectedText: document.getElementById("selectedText"),
+  whoText: document.getElementById("whoText"),
+  btnReset: document.getElementById("btnReset"),
+  btnReset2: document.getElementById("btnReset2"),
+  btnRestart2: document.getElementById("btnRestart2"),
+  btnRules: document.getElementById("btnRules"),
+  modePlace: document.getElementById("modePlace"),
+  modeLine: document.getElementById("modeLine"),
+};
+
+let state = defaultState();
+let mode = "place";
+let selectedKey = null;
+
+const padding = 24;
+const viewSize = 600;
+const step = (viewSize - padding * 2) / (N - 1);
+function toSvg(x, y){ return { sx: padding + x*step, sy: padding + y*step }; }
+
+function showToast(msg){
+  els.toastMsg.textContent = msg;
+  els.toast.style.display = "block";
+}
+function hideToast(){ els.toast.style.display = "none"; }
+els.toastClose.addEventListener("click", hideToast);
+
+function setMode(m){
+  mode = m;
+  els.modePlace.classList.toggle("active", m==="place");
+  els.modeLine.classList.toggle("active", m==="line");
+  render();
+}
+els.modePlace.addEventListener("click", ()=>{ selectedKey=null; setMode("place"); });
+els.modeLine.addEventListener("click", ()=>{ selectedKey=null; setMode("line"); });
+
+function resetGame(){
+  state = defaultState();
+  mode = "place";
+  selectedKey = null;
+  els.overlay.classList.remove("show");
+  setMode("place");
+  showToast("已重置对局（单机）");
+}
+els.btnReset.addEventListener("click", resetGame);
+els.btnReset2.addEventListener("click", resetGame);
+els.btnRestart2.addEventListener("click", resetGame);
+
+els.btnRules.addEventListener("click", ()=>{
+  showToast("提示：点距=欧氏距离向下取整；线长计分=欧氏长度向上取整。回合结束：先更新孤立，再判定转化；转化判定看对方所有点（含转化点）。封闭图形判定仅基于己方当前拥有的点与线。");
+});
+
+function commit(action){
+  const currentPlayer = state.turn % 2;
+  const out = applyAction(state, action, currentPlayer);
+  if (!out.ok){ showToast(out.reason); return; }
+  state = out.state;
+  selectedKey = null;
+  mode = "place";
+  els.modePlace.classList.add("active"); els.modeLine.classList.remove("active");
+  render();
+}
+
+function onTapGrid(x, y){
+  if (state.gameOver) return;
+  if (mode === "place"){
+    commit({ type:"place", x, y });
+    return;
+  }
+  const k = keyOf(x, y);
+  const p = state.points[k];
+  if (!p){ showToast("连线模式下只能点选已有点"); return; }
+  const currentPlayer = state.turn % 2;
+  if (p.owner !== currentPlayer){ showToast("只能选择当前回合玩家的点作为端点"); return; }
+  if (!selectedKey){ selectedKey = k; render(); return; }
+  if (selectedKey === k){ selectedKey = null; render(); return; }
+  commit({ type:"line", aKey:selectedKey, bKey:k });
+}
+
+function clearBoard(){
+  while (els.board.firstChild) els.board.removeChild(els.board.firstChild);
+}
+function svgEl(tag, attrs){
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k,v] of Object.entries(attrs||{})) e.setAttribute(k, String(v));
+  return e;
+}
+
+function render(){
+  const currentPlayer = state.turn % 2;
+  els.turnNo.textContent = String(state.turn + 1);
+  els.pillBlack.classList.toggle("current", currentPlayer===0 && !state.gameOver);
+  els.pillWhite.classList.toggle("current", currentPlayer===1 && !state.gameOver);
+
+  const { totalLen, denom, score } = computeScores(state.points, state.lines);
+  const uiScore = (v)=> (v===Infinity ? "∞" : v.toFixed(3));
+
+  els.sBlackDetail.textContent = `线长：${totalLen[0]} / 原生点：${denom[0]}`;
+  els.sWhiteDetail.textContent = `线长：${totalLen[1]} / 原生点：${denom[1]}`;
+  els.sBlackScore.textContent = uiScore(score[0]);
+  els.sWhiteScore.textContent = uiScore(score[1]);
+
+  els.emptyCount.textContent = String(allEmptyCount(state.points));
+  els.modeText.textContent = mode === "place" ? "放点" : "连线";
+  els.selectedText.textContent = selectedKey || "无";
+  els.whoText.textContent = currentPlayer===0 ? "黑方" : "白方";
+  els.whoText.style.fontWeight = "900";
+
+  // game over overlay
+  if (state.gameOver){
+    els.overlay.classList.add("show");
+    els.winnerText.textContent = state.winner || "已结算";
+    els.blackDetail.textContent = `线长：${totalLen[0]} / 原生点：${denom[0]}`;
+    els.whiteDetail.textContent = `线长：${totalLen[1]} / 原生点：${denom[1]}`;
+    els.blackScore.textContent = uiScore(score[0]);
+    els.whiteScore.textContent = uiScore(score[1]);
+  } else {
+    els.overlay.classList.remove("show");
+  }
+
+  // draw
+  clearBoard();
+
+  // grid lines
+  for (let i=0;i<N;i++){
+    const x = padding + i*step;
+    els.board.appendChild(svgEl("line",{x1:x,y1:padding,x2:x,y2:viewSize-padding,stroke:"#e5e7eb","stroke-width":1}));
+    els.board.appendChild(svgEl("line",{x1:padding,y1:x,x2:viewSize-padding,y2:x,stroke:"#e5e7eb","stroke-width":1}));
+  }
+
+  // lines
+  for (const l of state.lines){
+    const a = state.points[l.aKey], b = state.points[l.bKey];
+    if (!a || !b) continue;
+    const A = toSvg(a.x,a.y), B = toSvg(b.x,b.y);
+    const stroke = l.owner===0 ? "#111827" : "#6b7280";
+    els.board.appendChild(svgEl("line",{x1:A.sx,y1:A.sy,x2:B.sx,y2:B.sy,stroke, "stroke-width":3, opacity:"0.95"}));
+  }
+
+  // selected highlight
+  if (selectedKey && state.points[selectedKey]){
+    const p = state.points[selectedKey];
+    const P = toSvg(p.x,p.y);
+    els.board.appendChild(svgEl("circle",{cx:P.sx, cy:P.sy, r:12, fill:"none", stroke:"#2563eb", "stroke-width":3}));
+  }
+
+  // points
+  for (const [k,p] of Object.entries(state.points)){
+    const P = toSvg(p.x,p.y);
+    const baseFill = p.owner===0 ? "#111827" : "#f3f4f6";
+    const baseStroke = "#111827";
+    const isConverted = p.state==="converted";
+    const isIsolated = p.state==="isolated";
+    const r = isConverted ? 7 : 8;
+
+    if (isIsolated){
+      els.board.appendChild(svgEl("circle",{
+        cx:P.sx, cy:P.sy, r:r+5, fill:"none", stroke:"#f59e0b", "stroke-width":3,
+        "stroke-dasharray":"6 4", opacity:"0.95"
+      }));
     }
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
-  </script>
+    const c = svgEl("circle",{
+      cx:P.sx, cy:P.sy, r,
+      fill:baseFill, stroke:baseStroke, "stroke-width":2,
+      "stroke-dasharray": isConverted ? "4 3" : "",
+      opacity: isIsolated ? "0.95" : "1"
+    });
+    els.board.appendChild(c);
+
+    if (isConverted){
+      els.board.appendChild(svgEl("circle",{
+        cx:P.sx, cy:P.sy, r:3,
+        fill: (p.owner===0 ? "#f9fafb" : "#111827"),
+        opacity:"0.9"
+      }));
+    }
+  }
+
+  // hit targets
+  for (let y=0;y<N;y++){
+    for (let x=0;x<N;x++){
+      const P = toSvg(x,y);
+      const hit = svgEl("circle",{cx:P.sx, cy:P.sy, r:12, fill:"transparent"});
+      hit.addEventListener("pointerdown",(e)=>{ e.preventDefault(); onTapGrid(x,y); });
+      els.board.appendChild(hit);
+    }
+  }
+}
+
+render();
+</script>
 </body>
 </html>
