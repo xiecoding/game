@@ -463,14 +463,51 @@
                         const { sx, sy } = toSvg(p.x, p.y);
                         const baseFill = p.owner === 0 ? "#111827" : "#f3f4f6";
                         const baseStroke = "#111827";
-                        const r = p.state === "converted" ? 7 : 8;
-                        const strokeDash = p.state === "converted" ? "4 3" : "";
-                        const opacity = p.state === "isolated" ? 0.85 : 1;
+
+                        const isConverted = p.state === "converted";
+                        const isIsolated = p.state === "isolated";
+
+                        const r = isConverted ? 7 : 8;
+                        const strokeDash = isConverted ? "4 3" : "";
+                        const opacity = isIsolated ? 0.95 : 1;
+
                         return (
                           <g key={k}>
-                            <circle cx={sx} cy={sy} r={r} fill={baseFill} stroke={baseStroke} strokeWidth={2} strokeDasharray={strokeDash} opacity={opacity} />
-                            {p.state === "converted" ? (
-                              <circle cx={sx} cy={sy} r={3} fill={p.owner === 0 ? "#f9fafb" : "#111827"} opacity={0.9} />
+                            {/* 额外标识：孤立点外圈 */}
+                            {isIsolated ? (
+                              <circle
+                                cx={sx}
+                                cy={sy}
+                                r={r + 5}
+                                fill="none"
+                                stroke="#f59e0b"
+                                strokeWidth={3}
+                                strokeDasharray="6 4"
+                                opacity={0.95}
+                              />
+                            ) : null}
+
+                            {/* 点本体 */}
+                            <circle
+                              cx={sx}
+                              cy={sy}
+                              r={r}
+                              fill={baseFill}
+                              stroke={baseStroke}
+                              strokeWidth={2}
+                              strokeDasharray={strokeDash}
+                              opacity={opacity}
+                            />
+
+                            {/* 转化点中心标记 */}
+                            {isConverted ? (
+                              <circle
+                                cx={sx}
+                                cy={sy}
+                                r={3}
+                                fill={p.owner === 0 ? "#f9fafb" : "#111827"}
+                                opacity={0.9}
+                              />
                             ) : null}
                           </g>
                         );
@@ -542,12 +579,31 @@
                   </div>
 
                   <div className="mt-3 text-xs leading-5 text-neutral-600">
-                    <div className="font-semibold text-neutral-800">状态标识</div>
-                    <ul className="mt-1 list-disc pl-5">
-                      <li>普通点：原生点</li>
-                      <li>略透明：孤立点（从自己下一个回合开始可能出现）</li>
-                      <li>虚线边框 + 中心小点：转化点（归属对手，不计入分母，但可连线）</li>
-                    </ul>
+                    <div className="font-semibold text-neutral-800">图例（点的含义）</div>
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-3">
+                        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                          <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
+                        </svg>
+                        <div className="text-xs text-neutral-700">原生点（普通点）</div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                          <circle cx="14" cy="14" r="13" fill="none" stroke="#f59e0b" stroke-width="3" stroke-dasharray="6 4" />
+                          <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
+                        </svg>
+                        <div className="text-xs text-neutral-700">孤立点（被标记为“孤立”的原生点）</div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                          <circle cx="14" cy="14" r="7" fill="#f3f4f6" stroke="#111827" stroke-width="2" stroke-dasharray="4 3" />
+                          <circle cx="14" cy="14" r="3" fill="#111827" opacity="0.9" />
+                        </svg>
+                        <div className="text-xs text-neutral-700">转化点（归属对手；可连线）</div>
+                      </div>
+                    </div>
                     <div className="mt-2">转化只在回合结束判定：先更新孤立，再检查孤立点半径3内是否存在任意对方点（包括对方转化点）。</div>
                   </div>
                 </div>
