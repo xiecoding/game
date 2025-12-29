@@ -174,6 +174,7 @@
             <div class="kbox"><div>当前模式</div><div class="v" id="modeText"></div></div>
             <div class="kbox"><div>已选端点</div><div class="v" id="selectedText"></div></div>
             <div class="kbox"><div>轮到</div><div class="v" id="whoText"></div></div>
+            <div class="kbox"><div>已落子（按放置者 黑/白）</div><div class="v" id="pieceCountText"></div></div>
           </div>
         </div>
 
@@ -197,6 +198,7 @@
  * 核心规则（与联机版一致）
  ********************/
 const N = 16;
+const MAX_PIECES = 30;
 
 function floorDist(a, b) {
   const dx = a.x - b.x, dy = a.y - b.y;
@@ -460,12 +462,27 @@ function isLegalLine(pointsObj, linesArr, owner, aKey, bKey) {
   const d = floorDist(pa, pb);
   if (d > 5) return { ok: false, reason: "距离超过 5（欧氏距离向下取整）" };
 
-  // 新规则：允许形成封闭图形。
-  // 但“构成同一个封闭图形（环）的线”之间不能互相交叉（非端点相交视为交叉）。
-  // 仅以己方当前拥有的点与己方线判定封闭（与旧逻辑一致）。
+  // 新规则（封闭图形的定义/约束）：
+  // 允许形成封闭图形（环）。但“封闭图形”必须满足：
+  // 1) 顶点必须是己方的原生点或转化点（不允许使用孤立点作为顶点）；
+  // 2) 构成该封闭图形的各边彼此不交叉（非端点处相交视为交叉）。
+  // 仅以己方当前拥有的点与己方线判定封闭（对方线不参与）。
   const cyc = cycleEdgesIfCreated(pointsObj, linesArr, owner, aKey, bKey);
-  if (cyc && cycleHasInternalCross(pointsObj, cyc)) {
-    return { ok: false, reason: "封闭图形的边之间不能相互交叉" };
+  if (cyc) {
+    // 顶点检查：环上出现孤立点则不允许形成该封闭图形
+    const vset = new Set();
+    for (const e of cyc) { vset.add(e.aKey); vset.add(e.bKey); }
+    for (const vk of vset) {
+      const p = pointsObj[vk];
+      if (!p) continue;
+      if (!(p.state === "original" || p.state === "converted")) {
+        return { ok: false, reason: "封闭图形顶点必须为己方原生点或转化点（不能使用孤立点）" };
+      }
+    }
+    // 边不交叉检查（作为封闭图形定义的一部分）
+    if (cycleHasInternalCross(pointsObj, cyc)) {
+      return { ok: false, reason: "封闭图形的各边不能相互交叉" };
+    }
   }
 const crosses = lineCrossCountWithOpponent(pointsObj, linesArr, pa, pb, owner);
   const diagNew = isDiagonal(pa, pb);
@@ -554,6 +571,68 @@ function computeScores(pointsObj, linesArr) {
   return { totalLen, denom, score };
 }
 
+function countPieces(pointsObj) {
+  // 新口径：只统计“自己放下的点”，包括已被对方转化走的点；
+  // 不统计“对方放下但后来转化为自己的点”。
+  const c = [0, 0];
+  for (const p of Object.values(pointsObj)) {
+    const by = (p.placedBy === 0 || p.placedBy === 1) ? p.placedBy : p.owner; // 兼容旧数据
+    c[by] += 1;
+  }
+  return c;
+}
+
+function currentPlayerToMove(st) {
+  const c = countPieces(st.points);
+  const done0 = c[0] >= MAX_PIECES;
+  const done1 = c[1] >= MAX_PIECES;
+  if (done0 && !done1) return 1;
+  if (done1 && !done0) return 0;
+  // 都没下完或都下完：保持轮流（由 turn 决定）
+  return st.turn % 2;
+}
+
+function playerCanAct(st, player) {
+  const c = countPieces(st.points);
+  const hasPieces = c[player] < MAX_PIECES;
+  if (!hasPieces) return false; // 子下完则停止行动
+  const canPlace = allEmptyCount(st.points) > 0;
+  const canLine = hasAnyLegalLineForPlayer(st.points, st.lines, player);
+  return canPlace || canLine;
+}
+
+function advanceTurn(st) {
+  // 推进回合：若一方已下完子，则由另一方连续行动；否则轮流
+  const c = countPieces(st.points);
+  const done0 = c[0] >= MAX_PIECES;
+  const done1 = c[1] >= MAX_PIECES;
+
+  if (done0 && !done1) {
+    advanceTurn(st); // 仍然递增回合数（用于孤立判定）
+    return;
+  }
+  if (done1 && !done0) {
+    advanceTurn(st);
+    return;
+  }
+  advanceTurn(st);
+}
+
+function checkGameOverByNewRules(st) {
+  // 结束条件：
+  // 1) 任意一方在“还有子”的情况下无法进行任何合规行动 => 立即结束
+  // 2) 双方子都下完（各 MAX_PIECES 个） => 结束
+  const c = countPieces(st.points);
+  const done0 = c[0] >= MAX_PIECES;
+  const done1 = c[1] >= MAX_PIECES;
+
+  if (done0 && done1) return { over: true, reason: "双方子已下完" };
+
+  // 若仍有子但无法行动（在其应行动时触发）
+  // 这里我们在每个“将要行动的玩家”开始回合时检查。
+  return { over: false, reason: "" };
+}
+
 function allEmptyCount(pointsObj) {
   return N * N - Object.keys(pointsObj).length;
 }
@@ -569,10 +648,21 @@ function hasAnyLegalLineForPlayer(pointsObj, linesArr, owner) {
   return false;
 }
 
-function isGameOverAtStart(pointsObj, linesArr, playerToMove) {
-  const canPlace = allEmptyCount(pointsObj) > 0;
-  const canLine = hasAnyLegalLineForPlayer(pointsObj, linesArr, playerToMove);
-  return (!canPlace && !canLine);
+function isGameOverAtStart(st) {
+  const c = countPieces(st.points);
+  const done0 = c[0] >= MAX_PIECES;
+  const done1 = c[1] >= MAX_PIECES;
+
+  if (done0 && done1) return { over: true, reason: "双方子已下完" };
+
+  const player = currentPlayerToMove(st);
+  // 若该玩家子已下完，则跳过其行动：交由另一方继续；这里不判结束
+  if (c[player] >= MAX_PIECES) return { over: false, reason: "" };
+
+  // 若还有子但无任何合法行动 => 立即结束
+  if (!playerCanAct(st, player)) return { over: true, reason: "存在一方还有子但无法进行任何合规行动" };
+
+  return { over: false, reason: "" };
 }
 
 function nowMs(){ return Date.now(); }
@@ -602,27 +692,31 @@ function applyAction(authoritativeState, action, actorIdx) {
   st.points = settleStartOfTurn(st.turn, st.points, st.lines);
   if (st.gameOver) return { ok:false, reason:"游戏已结束", state: st };
 
-  const currentPlayer = st.turn % 2;
+  const currentPlayer = currentPlayerToMove(st);
   if (actorIdx !== currentPlayer) return { ok:false, reason:"不是当前回合玩家", state: st };
 
   if (action.type === "place") {
+    const pieceCount = countPieces(st.points)[actorIdx];
+    if (pieceCount >= MAX_PIECES) return { ok:false, reason:"该玩家已下满30子，不能再放点，也停止行动", state: st };
     const { x, y } = action;
     const k = keyOf(x, y);
     if (st.points[k]) return { ok:false, reason:"该位置已有点", state: st };
 
-    st.points[k] = { x, y, owner: actorIdx, state: "original", placedTurn: st.turn };
+    st.points[k] = { x, y, owner: actorIdx, placedBy: actorIdx, state: "original", placedTurn: st.turn };
     st.points = settleEndOfTurn(st.turn, st.points, st.lines);
-    st.turn += 1;
+    advanceTurn(st);
 
-    const nextToMove = st.turn % 2;
+    // 回合推进后：先进行回合开始结算（孤立判定）
     st.points = settleStartOfTurn(st.turn, st.points, st.lines);
 
-    if (isGameOverAtStart(st.points, st.lines, nextToMove)) {
+    // 新结束条件检查（只在将要行动玩家开始回合时判定“卡死”）
+    const go = isGameOverAtStart(st);
+    if (go.over) {
       const { score } = computeScores(st.points, st.lines);
       st.gameOver = true;
       st.winner = (score[0] === score[1]) ? "平局" : (score[0] > score[1] ? "黑方胜" : "白方胜");
     }
-    st.lastUpdatedAt = nowMs();
+st.lastUpdatedAt = nowMs();
     return { ok:true, state: st };
   }
 
@@ -633,17 +727,19 @@ function applyAction(authoritativeState, action, actorIdx) {
 
     st.lines.push(makeLine(st.points, actorIdx, aKey, bKey));
     st.points = settleEndOfTurn(st.turn, st.points, st.lines);
-    st.turn += 1;
+    advanceTurn(st);
 
-    const nextToMove = st.turn % 2;
+    // 回合推进后：先进行回合开始结算（孤立判定）
     st.points = settleStartOfTurn(st.turn, st.points, st.lines);
 
-    if (isGameOverAtStart(st.points, st.lines, nextToMove)) {
+    // 新结束条件检查（只在将要行动玩家开始回合时判定“卡死”）
+    const go = isGameOverAtStart(st);
+    if (go.over) {
       const { score } = computeScores(st.points, st.lines);
       st.gameOver = true;
       st.winner = (score[0] === score[1]) ? "平局" : (score[0] > score[1] ? "黑方胜" : "白方胜");
     }
-    st.lastUpdatedAt = nowMs();
+st.lastUpdatedAt = nowMs();
     return { ok:true, state: st };
   }
 
@@ -675,6 +771,7 @@ const els = {
   modeText: document.getElementById("modeText"),
   selectedText: document.getElementById("selectedText"),
   whoText: document.getElementById("whoText"),
+  pieceCountText: document.getElementById("pieceCountText"),
   btnReset: document.getElementById("btnReset"),
   btnReset2: document.getElementById("btnReset2"),
   btnRestart2: document.getElementById("btnRestart2"),
@@ -725,7 +822,7 @@ els.btnRules.addEventListener("click", ()=>{
 });
 
 function commit(action){
-  const currentPlayer = state.turn % 2;
+  const currentPlayer = currentPlayerToMove(state);
   const out = applyAction(state, action, currentPlayer);
   if (!out.ok){ showToast(out.reason); return; }
   state = out.state;
@@ -744,7 +841,7 @@ function onTapGrid(x, y){
   const k = keyOf(x, y);
   const p = state.points[k];
   if (!p){ showToast("连线模式下只能点选已有点"); return; }
-  const currentPlayer = state.turn % 2;
+  const currentPlayer = currentPlayerToMove(state);
   if (p.owner !== currentPlayer){ showToast("只能选择当前回合玩家的点作为端点"); return; }
   if (!selectedKey){ selectedKey = k; render(); return; }
   if (selectedKey === k){ selectedKey = null; render(); return; }
@@ -761,7 +858,7 @@ function svgEl(tag, attrs){
 }
 
 function render(){
-  const currentPlayer = state.turn % 2;
+  const currentPlayer = currentPlayerToMove(state);
   els.turnNo.textContent = String(state.turn + 1);
   els.pillBlack.classList.toggle("current", currentPlayer===0 && !state.gameOver);
   els.pillWhite.classList.toggle("current", currentPlayer===1 && !state.gameOver);
@@ -778,6 +875,10 @@ function render(){
   els.modeText.textContent = mode === "place" ? "放点" : "连线";
   els.selectedText.textContent = selectedKey || "无";
   els.whoText.textContent = currentPlayer===0 ? "黑方" : "白方";
+  if (els.pieceCountText) {
+    const pc = countPieces(state.points);
+    els.pieceCountText.textContent = `${pc[0]}/${MAX_PIECES} · ${pc[1]}/${MAX_PIECES}`;
+  }
   els.whoText.style.fontWeight = "900";
 
   // game over overlay
