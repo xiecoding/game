@@ -183,7 +183,7 @@
             <div class="kbox">连线距离<div class="v">≤ 5（floor）</div></div>
             <div class="kbox">孤立半径<div class="v">≤ 3（floor）</div></div>
             <div class="kbox">线长计分<div class="v">欧氏向上取整</div></div>
-            <div class="kbox">禁止结构<div class="v">无环（森林）</div></div>
+            <div class="kbox">禁止结构<div class="v">封闭边不可互交</div></div>
           </div>
         </div>
       </div>
@@ -365,6 +365,84 @@ function wouldCreateCycle(adj, owner, aKey, bKey) {
   return false;
 }
 
+function findPathKeys(adjMap, startKey, targetKey) {
+  // 在无向图中找一条 start->target 的路径（返回 key 数组，含两端）；找不到返回 null
+  const stack = [startKey];
+  const parent = new Map([[startKey, null]]);
+  while (stack.length) {
+    const v = stack.pop();
+    if (v === targetKey) break;
+    const ns = adjMap.get(v);
+    if (!ns) continue;
+    for (const nx of ns) {
+      if (!parent.has(nx)) {
+        parent.set(nx, v);
+        stack.push(nx);
+      }
+    }
+  }
+  if (!parent.has(targetKey)) return null;
+  const path = [];
+  let cur = targetKey;
+  while (cur !== null) {
+    path.push(cur);
+    cur = parent.get(cur) ?? null;
+  }
+  path.reverse();
+  return path;
+}
+
+function edgesFromPath(pathKeys) {
+  const edges = [];
+  for (let i = 0; i < pathKeys.length - 1; i++) {
+    edges.push({ aKey: pathKeys[i], bKey: pathKeys[i+1] });
+  }
+  return edges;
+}
+
+function lineSegmentsIntersectNonEndpoint(pointsObj, e1, e2) {
+  // 两线段是否在“非端点”处相交（共享端点/共享点不算交叉）
+  const a1 = pointsObj[e1.aKey], b1 = pointsObj[e1.bKey];
+  const a2 = pointsObj[e2.aKey], b2 = pointsObj[e2.bKey];
+  if (!a1 || !b1 || !a2 || !b2) return false;
+
+  const ends1 = new Set([e1.aKey, e1.bKey]);
+  if (ends1.has(e2.aKey) || ends1.has(e2.bKey)) return false;
+
+  // 只要几何上相交就算（包含非格点交点）；端点重合已提前排除
+  return segmentsIntersectAny(a1, b1, a2, b2);
+}
+
+function cycleEdgesIfCreated(pointsObj, linesArr, owner, aKey, bKey) {
+  // 构造“加入新边(aKey,bKey)”后，若形成一个环，则返回该环的边集合（只返回一条找到的简单环）。
+  // 若不形成环，返回 null。
+  const adj = buildAdjacency(linesArr, pointsObj);
+  const m = adj[owner];
+
+  // 先确保邻接中存在端点（buildAdjacency 已只包含 owner 的点端）
+  if (!m.has(aKey)) m.set(aKey, new Set());
+  if (!m.has(bKey)) m.set(bKey, new Set());
+
+  // 若原本就存在 a->b 的路径，则加入边会形成环。这里找“原图里”a 到 b 的路径。
+  const path = findPathKeys(m, aKey, bKey);
+  if (!path) return null;
+
+  // 环 = path + 新边(b->a)
+  const edges = edgesFromPath(path);
+  edges.push({ aKey, bKey });
+  return edges;
+}
+
+function cycleHasInternalCross(pointsObj, cycleEdges) {
+  // 检查环边之间是否有“非端点交叉”
+  for (let i = 0; i < cycleEdges.length; i++) {
+    for (let j = i + 1; j < cycleEdges.length; j++) {
+      if (lineSegmentsIntersectNonEndpoint(pointsObj, cycleEdges[i], cycleEdges[j])) return true;
+    }
+  }
+  return false;
+}
+
 function isLegalLine(pointsObj, linesArr, owner, aKey, bKey) {
   const pa = pointsObj[aKey];
   const pb = pointsObj[bKey];
@@ -382,10 +460,14 @@ function isLegalLine(pointsObj, linesArr, owner, aKey, bKey) {
   const d = floorDist(pa, pb);
   if (d > 5) return { ok: false, reason: "距离超过 5（欧氏距离向下取整）" };
 
-  const adj = buildAdjacency(linesArr, pointsObj);
-  if (wouldCreateCycle(adj, owner, aKey, bKey)) return { ok: false, reason: "禁止形成封闭图形（无环）" };
-
-  const crosses = lineCrossCountWithOpponent(pointsObj, linesArr, pa, pb, owner);
+  // 新规则：允许形成封闭图形。
+  // 但“构成同一个封闭图形（环）的线”之间不能互相交叉（非端点相交视为交叉）。
+  // 仅以己方当前拥有的点与己方线判定封闭（与旧逻辑一致）。
+  const cyc = cycleEdgesIfCreated(pointsObj, linesArr, owner, aKey, bKey);
+  if (cyc && cycleHasInternalCross(pointsObj, cyc)) {
+    return { ok: false, reason: "封闭图形的边之间不能相互交叉" };
+  }
+const crosses = lineCrossCountWithOpponent(pointsObj, linesArr, pa, pb, owner);
   const diagNew = isDiagonal(pa, pb);
 
   // 你最新规则：
