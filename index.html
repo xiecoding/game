@@ -575,8 +575,11 @@ function countPieces(pointsObj) {
   // 新口径：只统计“自己放下的点”，包括已被对方转化走的点；
   // 不统计“对方放下但后来转化为自己的点”。
   const c = [0, 0];
-  for (const p of Object.values(pointsObj)) {
-    const by = (p.placedBy === 0 || p.placedBy === 1) ? p.placedBy : p.owner; // 兼容旧数据
+  for (const k in pointsObj) {
+    if (!Object.prototype.hasOwnProperty.call(pointsObj, k)) continue;
+    const p = pointsObj[k];
+    if (!p) continue;
+    const by = (p.placedBy === 0 || p.placedBy === 1) ? p.placedBy : p.owner; // 兼容旧存档
     c[by] += 1;
   }
   return c;
@@ -602,20 +605,8 @@ function playerCanAct(st, player) {
 }
 
 function advanceTurn(st) {
-  // 推进回合：若一方已下完子，则由另一方连续行动；否则轮流
-  const c = countPieces(st.points);
-  const done0 = c[0] >= MAX_PIECES;
-  const done1 = c[1] >= MAX_PIECES;
-
-  if (done0 && !done1) {
-    advanceTurn(st); // 仍然递增回合数（用于孤立判定）
-    return;
-  }
-  if (done1 && !done0) {
-    advanceTurn(st);
-    return;
-  }
-  advanceTurn(st);
+  // 推进回合计数（用于孤立判定等）。行动权由 currentPlayerToMove(st) 决定。
+  st.turn += 1;
 }
 
 function checkGameOverByNewRules(st) {
