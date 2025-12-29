@@ -3,16 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Isolaton and Relation — 双人同屏（纯静态）</title>
-  <!-- Tailwind via CDN (static page; requires internet). If you want fully offline, tell me and I'll inline minimal CSS. -->
+  <title>Isolaton and Relation — 双人同屏（纯静态 v2）</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React 18 UMD -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel for JSX (static; requires internet). For production, I can also provide a precompiled no-Babel build. -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    /* Prevent pinch zoom weirdness on some mobile browsers while still allowing scroll */
     html, body { height: 100%; }
   </style>
 </head>
@@ -20,9 +16,8 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useEffect, useMemo, useRef, useState } = React;
+    const { useEffect, useMemo, useState } = React;
 
-    // ======= Core rules helpers =======
     const N = 16;
 
     function floorDist(a, b) {
@@ -30,27 +25,25 @@
       const dy = a.y - b.y;
       return Math.floor(Math.hypot(dx, dy));
     }
-
     function ceilLen(a, b) {
       const dx = a.x - b.x;
       const dy = a.y - b.y;
       return Math.ceil(Math.hypot(dx, dy));
     }
-
     function isDiagonal(a, b) {
       const dx = Math.abs(a.x - b.x);
       const dy = Math.abs(a.y - b.y);
       return dx === dy && dx !== 0;
     }
 
-    // Segment intersection for lattice-point crossings (including touching).
-    // Counts a crossing only when intersection point is exactly a lattice point (integers), OR shared endpoint.
     function segmentLatticeIntersection(p1, p2, q1, q2) {
       const eps = 1e-9;
 
       const onSegment = (a, b, c) =>
-        (Math.min(a.x, c.x) - eps <= b.x && b.x <= Math.max(a.x, c.x) + eps &&
-         Math.min(a.y, c.y) - eps <= b.y && b.y <= Math.max(a.y, c.y) + eps);
+        Math.min(a.x, c.x) - eps <= b.x &&
+        b.x <= Math.max(a.x, c.x) + eps &&
+        Math.min(a.y, c.y) - eps <= b.y &&
+        b.y <= Math.max(a.y, c.y) + eps;
 
       const orient = (a, b, c) => {
         const v = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
@@ -84,13 +77,11 @@
 
       if (!intersects) return null;
 
-      // Collinear: count only lattice endpoints that lie on other segment
       if (o1 === 0 && onSegment(p1, q1, p2)) return q1;
       if (o2 === 0 && onSegment(p1, q2, p2)) return q2;
       if (o3 === 0 && onSegment(q1, p1, q2)) return p1;
       if (o4 === 0 && onSegment(q1, p2, q2)) return p2;
 
-      // Non-parallel intersection point
       const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
       const x3 = q1.x, y3 = q1.y, x4 = q2.x, y4 = q2.y;
 
@@ -112,27 +103,14 @@
       return null;
     }
 
-    function keyOf(x, y) {
-      return `${x},${y}`;
-    }
+    function keyOf(x, y) { return `${x},${y}`; }
 
     function PlayerPill({ player, current }) {
       const label = player === 0 ? "黑方" : "白方";
       return (
-        <span
-          className={
-            "inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm " +
-            (current ? "bg-black text-white" : "bg-neutral-200 text-neutral-900")
-          }
-        >
-          <span
-            className={
-              "h-2.5 w-2.5 rounded-full " +
-              (player === 0 ? "bg-white" : "bg-neutral-700")
-            }
-          />
-          {label}
-          {current ? "（回合）" : ""}
+        <span className={"inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm " + (current ? "bg-black text-white" : "bg-neutral-200 text-neutral-900")}>
+          <span className={"h-2.5 w-2.5 rounded-full " + (player === 0 ? "bg-white" : "bg-neutral-700")} />
+          {label}{current ? "（回合）" : ""}
         </span>
       );
     }
@@ -141,12 +119,8 @@
       return (
         <button
           onClick={onClick}
-          className={
-            "rounded-2xl px-4 py-2 text-sm font-medium shadow-sm ring-1 transition active:scale-[0.99] " +
-            (active
-              ? "bg-neutral-900 text-white ring-neutral-900"
-              : "bg-white text-neutral-900 ring-neutral-200 hover:bg-neutral-50")
-          }
+          className={"rounded-2xl px-4 py-2 text-sm font-medium shadow-sm ring-1 transition active:scale-[0.99] " +
+            (active ? "bg-neutral-900 text-white ring-neutral-900" : "bg-white text-neutral-900 ring-neutral-200 hover:bg-neutral-50")}
         >
           {children}
         </button>
@@ -160,40 +134,36 @@
           <div className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm text-white shadow-lg">
             <div className="flex items-center gap-3">
               <div className="max-w-[70vw] break-words">{msg}</div>
-              <button
-                className="rounded-lg bg-white/10 px-2 py-1 text-xs hover:bg-white/15"
-                onClick={onClose}
-              >
-                关闭
-              </button>
+              <button className="rounded-lg bg-white/10 px-2 py-1 text-xs hover:bg-white/15" onClick={onClose}>关闭</button>
             </div>
           </div>
         </div>
       );
     }
 
-    // ======= App =======
+    function hasIncidentLine(lines, key) {
+      for (const l of lines) if (l.aKey === key || l.bKey === key) return true;
+      return false;
+    }
+
     function App() {
-      const [points, setPoints] = useState(() => new Map()); // key -> point
+      const [points, setPoints] = useState(() => new Map());
       const [lines, setLines] = useState([]);
       const [turn, setTurn] = useState(0);
       const currentPlayer = turn % 2;
 
-      const [mode, setMode] = useState("place"); // place|line
+      const [mode, setMode] = useState("place");
       const [selectedKey, setSelectedKey] = useState(null);
       const [toast, setToast] = useState("");
-      const [lastPlaced, setLastPlaced] = useState(null); // {key, owner, turnPlaced}
+
       const [gameOver, setGameOver] = useState(false);
       const [winner, setWinner] = useState(null);
 
-      const pointByKey = (k) => points.get(k);
+      const pointByKey = (k, map = points) => map.get(k);
 
       const ownedKeys = useMemo(() => {
         const arr = [[], []];
-        points.forEach((p, k) => {
-          if (p.owner === 0) arr[0].push(k);
-          else arr[1].push(k);
-        });
+        points.forEach((p, k) => { (p.owner === 0 ? arr[0] : arr[1]).push(k); });
         return arr;
       }, [points]);
 
@@ -236,10 +206,7 @@
           if (!ns) continue;
           for (const nx of ns) {
             if (nx === bKey) return true;
-            if (!seen.has(nx)) {
-              seen.add(nx);
-              stack.push(nx);
-            }
+            if (!seen.has(nx)) { seen.add(nx); stack.push(nx); }
           }
         }
         return false;
@@ -267,55 +234,57 @@
         const diag = isDiagonal(pa, pb);
         if (!diag && crosses > 0) return { ok: false, reason: "非斜线不能穿过对方连线" };
         if (diag && crosses > 1) return { ok: false, reason: "斜线最多穿过对方连线 1 次" };
-
         return { ok: true };
       };
 
-      const computeIsolatedForPlayer = (p, nowTurn) => {
-        if (p.state !== "original") return false;
-        if (nowTurn < p.placedTurn + 2) return false; // from next own turn
-        const hasLine = lines.some((l) => l.aKey === p.key || l.bKey === p.key);
-        if (hasLine) return false;
-        for (const k of ownedKeys[p.owner]) {
-          if (k === p.key) continue;
-          const q = pointByKey(k);
-          if (!q) continue;
-          if (floorDist(p, q) <= 3) return false;
+      const computeIsolatedForPoint = (p, nowTurn, map, linesForCheck) => {
+        if (p.state === "converted") return false;
+        if (p.state !== "original" && p.state !== "isolated") return false;
+        if (nowTurn < p.placedTurn + 2) return false;
+        if (hasIncidentLine(linesForCheck, p.key)) return false;
+
+        for (const [k2, q] of map.entries()) {
+          if (k2 === p.key) continue;
+          if (q.owner !== p.owner) continue;
+          if (floorDist(p, { ...q, key: k2 }) <= 3) return false;
         }
         return true;
       };
 
-      const applyStartOfTurnChecks = (nowTurn) => {
-        setPoints((prev) => {
-          const next = new Map(prev);
+      const updateIsolatedStates = (nowTurn, map, linesForCheck) => {
+        const next = new Map(map);
+        for (const [k, p] of next.entries()) {
+          const p2 = { ...p, key: k };
+          if (p2.state === "converted") continue;
+          const shouldBeIso = computeIsolatedForPoint(p2, nowTurn, next, linesForCheck);
+          if (shouldBeIso && p2.state === "original") next.set(k, { ...p2, state: "isolated" });
+          if (!shouldBeIso && p2.state === "isolated") next.set(k, { ...p2, state: "original" });
+        }
+        return next;
+      };
 
-          // Update isolated state (and revert if no longer isolated — see note in UI)
-          next.forEach((p, k) => {
-            const p2 = { ...p, key: k };
-            const shouldBeIsolated = computeIsolatedForPlayer(p2, nowTurn);
-            if (shouldBeIsolated && p2.state === "original") next.set(k, { ...p2, state: "isolated" });
-            if (!shouldBeIsolated && p2.state === "isolated") next.set(k, { ...p2, state: "original" });
-          });
+      const endOfTurnConversion = (map) => {
+        const next = new Map(map);
+        for (const [k, p] of next.entries()) {
+          if (p.state !== "isolated") continue;
+          const owner = p.owner;
+          const opp = 1 - owner;
+          const P = { ...p, key: k };
 
-          // Conversion triggered by last placed point
-          if (lastPlaced && lastPlaced.turnPlaced === nowTurn - 1) {
-            const triggerOwner = lastPlaced.owner;
-            const targetOwner = 1 - triggerOwner;
-            const tp = next.get(lastPlaced.key);
-            if (tp) {
-              next.forEach((p, k) => {
-                if (p.owner !== targetOwner) return;
-                if (p.state !== "isolated") return;
-                const q = { ...p, key: k };
-                if (floorDist(tp, q) <= 3) {
-                  next.set(k, { ...p, owner: triggerOwner, state: "converted" });
-                }
-              });
-            }
+          let threatened = false;
+          for (const [k2, q] of next.entries()) {
+            if (q.owner !== opp) continue;
+            const Q = { ...q, key: k2 };
+            if (floorDist(P, Q) <= 3) { threatened = true; break; }
           }
+          if (threatened) next.set(k, { ...p, owner: opp, state: "converted" });
+        }
+        return next;
+      };
 
-          return next;
-        });
+      const settleEndOfTurn = (nowTurn, map, linesForCheck) => {
+        const afterIso = updateIsolatedStates(nowTurn, map, linesForCheck);
+        return endOfTurnConversion(afterIso);
       };
 
       const computeScores = () => {
@@ -350,7 +319,7 @@
         return false;
       };
 
-      const checkGameOverAtStart = (nowTurn) => {
+      const checkGameOverAtStart = () => {
         const canPlace = allEmptyCount > 0;
         const canLine = hasAnyLegalLine(currentPlayer);
         if (!canPlace && !canLine) {
@@ -365,13 +334,13 @@
 
       useEffect(() => {
         if (gameOver) return;
-        applyStartOfTurnChecks(turn);
+        setPoints((prev) => updateIsolatedStates(turn, prev, lines));
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [turn]);
 
       useEffect(() => {
         if (gameOver) return;
-        const t = setTimeout(() => { checkGameOverAtStart(turn); }, 0);
+        const t = setTimeout(() => { checkGameOverAtStart(); }, 0);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [turn, points, lines]);
@@ -387,20 +356,11 @@
         const k = keyOf(x, y);
         if (points.has(k)) { setToast("该位置已有点"); return; }
 
-        setPoints((prev) => {
-          const next = new Map(prev);
-          next.set(k, {
-            id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-            x, y,
-            owner: currentPlayer,
-            state: "original",
-            placedTurn: turn,
-            key: k,
-          });
-          return next;
-        });
+        const placed = new Map(points);
+        placed.set(k, { x, y, owner: currentPlayer, state: "original", placedTurn: turn });
 
-        setLastPlaced({ key: k, owner: currentPlayer, turnPlaced: turn });
+        const settled = settleEndOfTurn(turn, placed, lines);
+        setPoints(settled);
         advanceTurn();
       };
 
@@ -408,16 +368,19 @@
         if (gameOver) return;
         const r = isLegalLine(currentPlayer, aKey, bKey);
         if (!r.ok) { setToast(r.reason); return; }
-        const a = pointByKey(aKey), b = pointByKey(bKey);
+
+        const a = pointByKey(aKey);
+        const b = pointByKey(bKey);
         const lenCeil = ceilLen(a, b);
 
-        setLines((prev) => [...prev, {
+        const nextLines = [...lines, {
           id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          aKey, bKey,
-          owner: currentPlayer,
-          lenCeil,
-        }]);
+          aKey, bKey, owner: currentPlayer, lenCeil
+        }];
 
+        const settled = settleEndOfTurn(turn, points, nextLines);
+        setLines(nextLines);
+        setPoints(settled);
         advanceTurn();
       };
 
@@ -442,7 +405,6 @@
         setMode("place");
         setSelectedKey(null);
         setToast("");
-        setLastPlaced(null);
         setGameOver(false);
         setWinner(null);
       };
@@ -451,7 +413,6 @@
       const viewSize = 600;
       const step = (viewSize - padding * 2) / (N - 1);
       const toSvg = (x, y) => ({ sx: padding + x * step, sy: padding + y * step });
-
       const uiScore = (v) => (v === Infinity ? "∞" : v.toFixed(3));
 
       return (
@@ -467,16 +428,11 @@
                       <PlayerPill player={0} current={currentPlayer === 0 && !gameOver} />
                       <PlayerPill player={1} current={currentPlayer === 1 && !gameOver} />
                     </div>
-                    <div className="text-sm text-neutral-600">
-                      回合：<span className="font-semibold text-neutral-900">{turn + 1}</span>
-                    </div>
+                    <div className="text-sm text-neutral-600">回合：<span className="font-semibold text-neutral-900">{turn + 1}</span></div>
                   </div>
 
                   <div className="relative">
-                    <svg
-                      className="h-[min(78vh,640px)] w-full touch-manipulation select-none"
-                      viewBox={`0 0 ${viewSize} ${viewSize}`}
-                    >
+                    <svg className="h-[min(78vh,640px)] w-full touch-manipulation select-none" viewBox={`0 0 ${viewSize} ${viewSize}`}>
                       {Array.from({ length: N }).map((_, i) => {
                         const x = padding + i * step;
                         return (
@@ -488,8 +444,8 @@
                       })}
 
                       {lines.map((l) => {
-                        const a = pointByKey(l.aKey);
-                        const b = pointByKey(l.bKey);
+                        const a = points.get(l.aKey);
+                        const b = points.get(l.bKey);
                         if (!a || !b) return null;
                         const { sx: x1, sy: y1 } = toSvg(a.x, a.y);
                         const { sx: x2, sy: y2 } = toSvg(b.x, b.y);
@@ -497,8 +453,8 @@
                         return <line key={l.id} x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={3} opacity={0.95} />;
                       })}
 
-                      {selectedKey && pointByKey(selectedKey) ? (() => {
-                        const p = pointByKey(selectedKey);
+                      {selectedKey && points.get(selectedKey) ? (() => {
+                        const p = points.get(selectedKey);
                         const { sx, sy } = toSvg(p.x, p.y);
                         return <circle cx={sx} cy={sy} r={12} fill="none" stroke="#2563eb" strokeWidth={3} />;
                       })() : null}
@@ -510,19 +466,9 @@
                         const r = p.state === "converted" ? 7 : 8;
                         const strokeDash = p.state === "converted" ? "4 3" : "";
                         const opacity = p.state === "isolated" ? 0.85 : 1;
-
                         return (
                           <g key={k}>
-                            <circle
-                              cx={sx}
-                              cy={sy}
-                              r={r}
-                              fill={baseFill}
-                              stroke={baseStroke}
-                              strokeWidth={2}
-                              strokeDasharray={strokeDash}
-                              opacity={opacity}
-                            />
+                            <circle cx={sx} cy={sy} r={r} fill={baseFill} stroke={baseStroke} strokeWidth={2} strokeDasharray={strokeDash} opacity={opacity} />
                             {p.state === "converted" ? (
                               <circle cx={sx} cy={sy} r={3} fill={p.owner === 0 ? "#f9fafb" : "#111827"} opacity={0.9} />
                             ) : null}
@@ -534,14 +480,8 @@
                         Array.from({ length: N }).map((__, x) => {
                           const { sx, sy } = toSvg(x, y);
                           return (
-                            <circle
-                              key={`hit-${x}-${y}`}
-                              cx={sx}
-                              cy={sy}
-                              r={12}
-                              fill="transparent"
-                              onPointerDown={(e) => { e.preventDefault(); onTapGrid(x, y); }}
-                            />
+                            <circle key={`hit-${x}-${y}`} cx={sx} cy={sy} r={12} fill="transparent"
+                              onPointerDown={(e) => { e.preventDefault(); onTapGrid(x, y); }} />
                           );
                         })
                       )}
@@ -565,9 +505,7 @@
                             </div>
                           </div>
                           <div className="mt-4 flex justify-center gap-3">
-                            <button className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm" onClick={reset}>
-                              重新开始
-                            </button>
+                            <button className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm" onClick={reset}>重新开始</button>
                           </div>
                         </div>
                       </div>
@@ -578,23 +516,14 @@
                 <div className="mt-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-neutral-200">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap gap-2">
-                      <ModeButton active={mode === "place"} onClick={() => { setMode("place"); setSelectedKey(null); }}>
-                        放点
-                      </ModeButton>
-                      <ModeButton active={mode === "line"} onClick={() => { setMode("line"); setSelectedKey(null); }}>
-                        连线
-                      </ModeButton>
-                      <button
-                        className="rounded-2xl bg-white px-4 py-2 text-sm font-medium shadow-sm ring-1 ring-neutral-200 hover:bg-neutral-50"
-                        onClick={() => setToast("提示：连线需满足距离≤5（欧氏向下取整）、非斜线不可穿过对方线，斜线最多穿过1次，且禁止成环。孤立/转化在回合开始自动判定。")}
-                      >
+                      <ModeButton active={mode === "place"} onClick={() => { setMode("place"); setSelectedKey(null); }}>放点</ModeButton>
+                      <ModeButton active={mode === "line"} onClick={() => { setMode("line"); setSelectedKey(null); }}>连线</ModeButton>
+                      <button className="rounded-2xl bg-white px-4 py-2 text-sm font-medium shadow-sm ring-1 ring-neutral-200 hover:bg-neutral-50"
+                        onClick={() => setToast("提示：距离判定用欧氏向下取整；计分线长用欧氏向上取整。转化只在回合结束判定：先更新孤立，再检查孤立点半径3内是否有任意对方点（含转化点）。")}>
                         规则提示
                       </button>
                     </div>
-
-                    <button className="rounded-2xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 ring-1 ring-neutral-200 hover:bg-neutral-200" onClick={reset}>
-                      重置
-                    </button>
+                    <button className="rounded-2xl bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 ring-1 ring-neutral-200 hover:bg-neutral-200" onClick={reset}>重置</button>
                   </div>
 
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -616,10 +545,10 @@
                     <div className="font-semibold text-neutral-800">状态标识</div>
                     <ul className="mt-1 list-disc pl-5">
                       <li>普通点：原生点</li>
-                      <li>略透明：孤立点（满足条件后出现）</li>
-                      <li>虚线边框 + 中心小点：转化点（已归属对手，且不计入分母，但可连线）</li>
+                      <li>略透明：孤立点（从自己下一个回合开始可能出现）</li>
+                      <li>虚线边框 + 中心小点：转化点（归属对手，不计入分母，但可连线）</li>
                     </ul>
-                    <div className="mt-2">注：此网页版本中，孤立点若不再满足条件会恢复为原生点（为了在线判定明确且可解释）。若你希望“孤立不可逆”，我可以给你一个开关版本。</div>
+                    <div className="mt-2">转化只在回合结束判定：先更新孤立，再检查孤立点半径3内是否存在任意对方点（包括对方转化点）。</div>
                   </div>
                 </div>
               </div>
@@ -634,11 +563,11 @@
                     </div>
                     <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
                       <div className="font-semibold">连线</div>
-                      <div className="mt-1 text-xs text-neutral-600">先点己方点选中，再点另一己方点完成连线；重复点同一点可取消。</div>
+                      <div className="mt-1 text-xs text-neutral-600">先点己方点选中，再点另一个己方点完成连线；重复点同一点可取消。</div>
                     </div>
                     <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      <div className="font-semibold">回合开始自动判定</div>
-                      <div className="mt-1 text-xs text-neutral-600">孤立与转化均在回合开始时自动执行，不允许反应操作。</div>
+                      <div className="font-semibold">结算时点</div>
+                      <div className="mt-1 text-xs text-neutral-600">孤立状态会在回合开始更新；转化仅在回合结束执行（先更新孤立，再转化）。</div>
                     </div>
                   </div>
                 </div>
@@ -646,43 +575,26 @@
                 <div className="mt-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-neutral-200">
                   <div className="text-sm font-semibold">当前规则参数</div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-neutral-700">
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      连线距离<div className="mt-1 text-sm font-semibold">≤ 5</div>
-                    </div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      孤立半径<div className="mt-1 text-sm font-semibold">≤ 3</div>
-                    </div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      距离规则<div className="mt-1 text-sm font-semibold">欧氏向下取整</div>
-                    </div>
-                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">
-                      禁止结构<div className="mt-1 text-sm font-semibold">无环（森林）</div>
-                    </div>
+                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">连线距离<div className="mt-1 text-sm font-semibold">≤ 5（floor）</div></div>
+                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">孤立半径<div className="mt-1 text-sm font-semibold">≤ 3（floor）</div></div>
+                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">线长计分<div className="mt-1 text-sm font-semibold">欧氏向上取整</div></div>
+                    <div className="rounded-2xl bg-neutral-50 p-3 ring-1 ring-neutral-200">禁止结构<div className="mt-1 text-sm font-semibold">无环（森林）</div></div>
                   </div>
                 </div>
 
                 <div className="mt-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-neutral-200">
                   <div className="text-sm font-semibold">对局信息</div>
                   <div className="mt-2 space-y-2 text-xs text-neutral-700">
-                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200">
-                      <span>剩余空点</span><span className="font-semibold">{allEmptyCount}</span>
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200">
-                      <span>当前模式</span><span className="font-semibold">{mode === "place" ? "放点" : "连线"}</span>
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200">
-                      <span>已选端点</span><span className="font-semibold">{selectedKey || "无"}</span>
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200">
-                      <span>上一步放点</span><span className="font-semibold">{lastPlaced ? lastPlaced.key : "无"}</span>
-                    </div>
+                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200"><span>剩余空点</span><span className="font-semibold">{allEmptyCount}</span></div>
+                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200"><span>当前模式</span><span className="font-semibold">{mode === "place" ? "放点" : "连线"}</span></div>
+                    <div className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-200"><span>已选端点</span><span className="font-semibold">{selectedKey || "无"}</span></div>
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="mt-4 text-center text-xs text-neutral-500">
-              Isolaton and Relation • 纯静态网页 • 双人同屏（手机/电脑自适应）
+              Isolaton and Relation • 纯静态网页 v2 • 双人同屏（手机/电脑自适应）
             </div>
           </div>
         </div>
