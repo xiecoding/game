@@ -1695,14 +1695,26 @@ render();
 </div>
 
 </div>
+<script>
 
-
-<!-- ===== LeanCloud (China) SDKs (CDN) ===== -->
-<script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.15.0/dist/av-min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leancloud-realtime@5.0.0-rc.8/dist/im-browser.min.js"></script>
-
+<!-- ===== LeanCloud SDKs (LOCAL) =====
+把 SDK 文件放到仓库目录：/lib/leancloud/
+- av-min.js
+- im-browser.min.js
+然后本页面会以同源方式加载，避免浏览器 Tracking Prevention 拦截。
+==================================== -->
+<script src="./lib/leancloud/av-min.js"></script>
+<script src="./lib/leancloud/im-browser.min.js"></script>
 
 <script>
+// SDK load guard (for quick diagnosis)
+(function(){
+  const ok = !!(window.AV && window.LeanCloudRealtime);
+  if(!ok){
+    console.warn("[LeanCloud] SDK not loaded. Please ensure ./lib/leancloud/av-min.js and im-browser.min.js exist.");
+  }
+})();
+</script>
 /* ===========================
    Online PvP (LeanCloud CN)
    - Frontend-only demo (GitHub Pages friendly)
@@ -1714,9 +1726,9 @@ render();
   // 控制台 -> 设置 -> 应用凭证: App ID / App Key / Server URL
   // Storage init (AV.init) requires serverURL. citeturn0search2
   const LC = {
-    appId:  "blCRBtZV33tqvXCqIIe32x7H-gzGzoHsz",
-    appKey: "YquFYufKrOZogqx03pFLdvKD",
-    serverURL: "https://blcrbtzv.lc-cn-n1-shared.com", // 例：https://xxxx.lc-cn-n1-shared.com
+    appId:  "YOUR_APP_ID",
+    appKey: "YOUR_APP_KEY",
+    serverURL: "https://YOUR_APP_DOMAIN.lc-cn-n1-shared.com", // 例：https://xxxx.lc-cn-n1-shared.com
   };
 
   // ===== UI refs =====
