@@ -1282,6 +1282,38 @@ let state = defaultState();
 let mode = "place";
 let selectedKey = null;
 
+// ===== Online sync helpers: expose snapshot APIs without changing game rules =====
+function deepClone(obj){
+  try{ return structuredClone(obj); }catch(e){ return JSON.parse(JSON.stringify(obj)); }
+}
+function syncWindowStateRef(){
+  // Provide a stable place for online layer to read current turn, etc.
+  window.state = state;
+  window.mode = mode;
+}
+// Export authoritative game state + minimal UI state (selection/mode)
+window.exportGameState = function(){
+  syncWindowStateRef();
+  return { state: deepClone(state), mode: mode, selectedKey: selectedKey };
+};
+// Import snapshot and re-render immediately
+window.importGameState = function(snap){
+  try{
+    if(!snap) return;
+    if(snap.state) state = snap.state;
+    if(typeof snap.mode === 'string') mode = snap.mode;
+    if('selectedKey' in snap) selectedKey = snap.selectedKey;
+    syncWindowStateRef();
+    if(typeof renderAll === 'function') renderAll();
+    if(typeof updateHUD === 'function') updateHUD();
+  }catch(e){
+    console.warn("[sync] importGameState failed", e);
+  }
+};
+// Ensure refs set on initial load
+syncWindowStateRef();
+
+
 const padding = 24;
 const viewSize = 600;
 const step = (viewSize - padding * 2) / (N - 1);
@@ -1458,6 +1490,7 @@ els.modeLine.addEventListener("click", ()=>{ selectedKey=null; setMode("line"); 
 
 function resetGame(){
   state = defaultState();
+  try{ if(typeof syncWindowStateRef==="function") syncWindowStateRef(); }catch(e){}
   mode = "place";
   selectedKey = null;
   els.overlay.classList.remove("show");
@@ -1832,11 +1865,10 @@ render();
   // 控制台 -> 设置 -> 应用凭证: App ID / App Key / Server URL
   // Storage init (AV.init) requires serverURL. 
   const LC = {
-    appId:  "blCRBtZV33tqvXCqIIe32x7H-gzGzoHsz",
-    appKey: "YquFYufKrOZogqx03pFLdvKD",
-    serverURL: "https://blcrbtzv.lc-cn-n1-shared.com", // 例：https://xxxx.lc-cn-n1-shared.com
+    appId:  "YOUR_APP_ID",
+    appKey: "YOUR_APP_KEY",
+    serverURL: "https://YOUR_APP_DOMAIN.lc-cn-n1-shared.com", // 例：https://xxxx.lc-cn-n1-shared.com
   };
-
 
   // ===== UI refs =====
   const roomInput = document.getElementById('roomInput');
