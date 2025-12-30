@@ -93,15 +93,15 @@ canvas {
 }
 
 /* Glow for SVG player lines */
-svg#board .line.black { filter: drop-shadow(0 0 6px rgba(120,160,255,0.85)) drop-shadow(0 0 14px rgba(120,160,255,0.35)); }
-svg#board .line.white { filter: drop-shadow(0 0 6px rgba(255,200,120,0.85)) drop-shadow(0 0 14px rgba(255,200,120,0.35)); }
+svg#board .line.black { filter: drop-shadow(0 0 6px rgba(120,120,255,0.85)) drop-shadow(0 0 14px rgba(120,120,255,0.35)); }
+svg#board .line.white { filter: drop-shadow(0 0 6px rgba(255,220,180,0.80)) drop-shadow(0 0 14px rgba(255,220,180,0.35)); }
 
 /* Glow for points */
-svg#board .pt.black { filter: drop-shadow(0 0 8px rgba(120,160,255,0.95)) drop-shadow(0 0 18px rgba(120,160,255,0.35)); }
-svg#board .pt.white { filter: drop-shadow(0 0 8px rgba(255,200,120,0.95)) drop-shadow(0 0 18px rgba(255,200,120,0.35)); }
+svg#board .pt.black { filter: drop-shadow(0 0 8px rgba(120,160,255,0.95)) drop-shadow(0 0 18px rgba(120,120,255,0.35)); }
+svg#board .pt.white { filter: drop-shadow(0 0 8px rgba(255,200,120,0.95)) drop-shadow(0 0 18px rgba(255,220,180,0.35)); }
 
 /* Isolated ring glow */
-svg#board .isoRing { filter: drop-shadow(0 0 10px rgba(245,158,11,0.75)); }
+svg#board .isoRing { filter: drop-shadow(0 0 10px rgba(242,219,155,0.355)); }
 
 
 .modalHint{ font-size:12px; color:#d6dcff; opacity:.9; margin-top:8px; line-height:1.35; }
@@ -140,6 +140,85 @@ svg#board .isoRing { filter: drop-shadow(0 0 10px rgba(245,158,11,0.75)); }
   color: #ffffff !important;
   text-shadow: 0 0 4px rgba(0,0,0,0.9);
 }
+
+
+/* ===== Neon constellation skin (fine-tuned colors) ===== */
+svg#board .pt.native { animation: pulseStar 1.6s ease-in-out infinite; }
+svg#board .pt.converted { filter: url(#glowStrong) drop-shadow(0 0 14px rgba(255,255,255,0.55)); }
+svg#board .line { filter: url(#glowLine); stroke-linecap: round; stroke-linejoin: round; }
+svg#board .line.diag { stroke-dasharray: 3 5; opacity: .86; }
+svg#board .line.axis { stroke-dasharray: none; }
+@keyframes pulseStar { 0%,100%{opacity:.92} 50%{opacity:1} }
+
+
+/* ===== Fix axis line visibility ===== */
+svg#board .line.axis{
+  stroke-width: 3.8 !important;
+  opacity: 1 !important;
+  filter: url(#glowLine) drop-shadow(0 0 6px rgba(255,255,255,0.35));
+}
+svg#board .line.diag{
+  stroke-width: 3.2 !important;
+  opacity: .9 !important;
+}
+
+
+/* ===== Boost piece brightness ===== */
+svg#board .pt{
+  filter: url(#glowStrong) drop-shadow(0 0 10px rgba(255,255,255,0.45));
+}
+svg#board .pt.native{
+  opacity: 1 !important;
+}
+svg#board .pt.converted{
+  filter: url(#glowStrong) drop-shadow(0 0 18px rgba(255,255,255,0.75)) !important;
+}
+svg#board .pt.isolated{
+  opacity: .9 !important;
+}
+svg#board .isoRing{
+  opacity: .75 !important;
+}
+
+
+/* ===== Further boost readability (pieces & lines) ===== */
+svg#board .pt{
+  filter: url(#glowStrong)
+          drop-shadow(0 0 14px rgba(255,255,255,0.55))
+          drop-shadow(0 0 26px rgba(255,255,255,0.25)) !important;
+  opacity: 1 !important;
+}
+svg#board .pt.isolated{ opacity: .95 !important; }
+svg#board .isoRing{ opacity: .85 !important; }
+
+svg#board .line{
+  opacity: 1 !important;
+  stroke-width: 3.6 !important;
+  filter: url(#glowLine) drop-shadow(0 0 8px rgba(255,255,255,0.25)) !important;
+}
+
+
+/* ===== Line style rules per game mechanics ===== */
+/* Default: axis = solid, diag = dashed */
+svg#board .line.axis{
+  stroke-dasharray: none !important;
+}
+svg#board .line.diag{
+  stroke-dasharray: 4 6 !important;
+}
+
+/* After being crossed: diagonal becomes solid */
+svg#board .line.diag.crossed{
+  stroke-dasharray: none !important;
+}
+
+
+/* ===== Line dash rules ===== */
+/* 初始：直线=实线；斜线=虚线 */
+svg#board .line.axis{ stroke-dasharray: none !important; }
+svg#board .line.diag{ stroke-dasharray: 4 6 !important; }
+/* 被穿过后的斜线：变为实线 */
+svg#board .line.diag.crossed{ stroke-dasharray: none !important; }
 
 </style>
 </head>
@@ -236,21 +315,21 @@ svg#board .isoRing { filter: drop-shadow(0 0 10px rgba(245,158,11,0.75)); }
             <div style="font-weight:800;font-size:13px;">图例（点的含义）</div>
             <div class="legend-item">
               <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
+                <circle cx="14" cy="14" r="8" fill="rgb(75,72,165)" stroke="rgba(255,255,255,0.10)" stroke-width="1.2" />
               </svg>
               <div>原生点（普通点）</div>
             </div>
             <div class="legend-item">
               <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                <circle cx="14" cy="14" r="13" fill="none" stroke="#f59e0b" stroke-width="3" stroke-dasharray="6 4" />
-                <circle cx="14" cy="14" r="8" fill="#111827" stroke="#111827" stroke-width="2" />
+                <circle cx="14" cy="14" r="13" fill="none" stroke="rgb(75,72,165)" stroke-width="2.5" stroke-dasharray="2.5 3.5" />
+                <circle cx="14" cy="14" r="8" fill="rgb(75,72,165)" stroke="rgba(255,255,255,0.10)" stroke-width="1.2" />
               </svg>
               <div>孤立点（外圈橙色虚线）</div>
             </div>
             <div class="legend-item">
               <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                <circle cx="14" cy="14" r="7" fill="#f3f4f6" stroke="#111827" stroke-width="2" stroke-dasharray="4 3" />
-                <circle cx="14" cy="14" r="3" fill="#111827" opacity="0.9" />
+                <circle cx="14" cy="14" r="7" fill="rgb(108,115,251)" stroke="rgba(255,255,255,0.12)" stroke-width="1.2" stroke-dasharray="4 3" />
+                <circle cx="14" cy="14" r="3" fill="#ffffff" opacity="0.85" />
               </svg>
               <div>转化点（虚线边框 + 中心点）</div>
             </div>
@@ -302,7 +381,7 @@ function ceilLen(a, b) {
   const dx = a.x - b.x, dy = a.y - b.y;
   return Math.ceil(Math.hypot(dx, dy));
 }
-function isDiagonal(a, b) {
+function isDiaggonal(a, b) {
   // 规则里的“斜线”= 非水平/非竖直（即 dx!=0 且 dy!=0）
   // “直线”= 水平或竖直（dx==0 或 dy==0）
   const dx = Math.abs(a.x - b.x);
@@ -441,9 +520,11 @@ function hasIncidentLine(lines, key) {
 function lineCrossCountWithOpponent(pointsObj, linesArr, a, b, owner) {
   // 返回与“对方连线”的交点计数，按对方连线类型分类：diag=斜线，straight=直线
   // 交点包含：共享端点、共享格点、以及在格点上的真实相交点（与你之前的判定一致）
+  // 额外返回：diagAlreadyCrossed = 新线是否碰到过“已经被穿过一次”的对方斜线（用于禁止二次穿过）
   const opp = 1 - owner;
   let diag = 0;
   let straight = 0;
+  let diagAlreadyCrossed = 0;
 
   for (const l of linesArr) {
     if (l.owner !== opp) continue;
@@ -454,10 +535,14 @@ function lineCrossCountWithOpponent(pointsObj, linesArr, a, b, owner) {
     const inter = segmentsIntersectAny(a, b, p1, p2);
     if (!inter) continue;
 
-    if (isDiagonal(p1, p2)) diag += 1;
-    else straight += 1;
+    if (isDiaggonal(p1, p2)) {
+      diag += 1;
+      if (l.crossed) diagAlreadyCrossed += 1;
+    } else {
+      straight += 1;
+    }
   }
-  return { diag, straight };
+  return { diag, straight, diagAlreadyCrossed };
 }
 
 function buildAdjacency(linesArr, pointsObj) {
@@ -662,7 +747,7 @@ function isLegalLine(pointsObj, linesArr, owner, aKey, bKey) {
     }
   }
 const crosses = lineCrossCountWithOpponent(pointsObj, linesArr, pa, pb, owner);
-  const diagNew = isDiagonal(pa, pb);
+  const diagNew = isDiaggonal(pa, pb);
 
   // 你最新规则：
   // 1) 斜线：可以穿过“对方斜线”，也能被对方斜线穿过（限制 1 次，包含端点/共享格点）；但不能穿过对方直线。
@@ -671,6 +756,9 @@ const crosses = lineCrossCountWithOpponent(pointsObj, linesArr, pa, pb, owner);
 
   // 直线“不能被任何线穿过” => 等价于：任何新连线都不能与对方直线相交（否则对方直线被穿过）。
   if (crosses.straight > 0) return { ok: false, reason: "直线不能被任何线穿过：禁止与对方直线相交（直线可穿过斜线，但斜线不可穿过直线）" };
+
+  // 任何线都不能再次穿过已经被穿过一次的对方斜线（因为斜线穿过仅限一次）
+  if (crosses.diagAlreadyCrossed > 0) return { ok: false, reason: "对方斜线已被穿过一次，不能再次穿过" };
 
   if (diagNew) {
     // 斜线与斜线的相交：最多 1 次（包含端点/共享格点）
@@ -859,7 +947,8 @@ function makeLine(pointsObj, owner, aKey, bKey) {
   const a = pointsObj[aKey];
   const b = pointsObj[bKey];
   const lenCeil = ceilLen(a, b);
-  return { id: `${nowMs()}_${Math.random().toString(16).slice(2)}`, aKey, bKey, owner, lenCeil };
+  const isDiagg = isDiaggonal(a, b);
+  return { id: `${nowMs()}_${Math.random().toString(16).slice(2)}`, aKey, bKey, owner, lenCeil, isDiagg, crossed:false };
 }
 
 function applyAction(authoritativeState, action, actorIdx) {
@@ -904,6 +993,20 @@ st.lastUpdatedAt = nowMs();
     if (!r.ok) return { ok:false, reason:r.reason, state: st };
 
     st.lines.push(makeLine(st.points, actorIdx, aKey, bKey));
+
+    // 若本次新连线穿过了对方斜线，则该对方斜线从“虚线”变为“实线”（永久）
+    const newL = st.lines[st.lines.length-1];
+    for (const l of st.lines) {
+      if (l === newL) continue;
+      if (l.owner === newL.owner) continue; // 穿过只针对对方线
+      if (!l.isDiagg) continue;              // 只改变对方斜线的样式
+      const p1 = st.points[l.aKey], p2 = st.points[l.bKey];
+      const aP = st.points[newL.aKey], bP = st.points[newL.bKey];
+      if (!p1 || !p2 || !aP || !bP) continue;
+      if (segmentsIntersectAny(aP, bP, p1, p2)) {
+        l.crossed = true;
+      }
+    }
 
     // 闭环检测：只判定闭环；每人最多 2 次触发奖励选择（在本回合结算前选择）
     const used = st.loopUsed[actorIdx] || 0;
@@ -1340,6 +1443,84 @@ function render(){
   // draw
   clearBoard();
 
+  // neon constellation defs (gradients + glows)
+  const defs = svgEl("defs",{});
+
+  // piece gradients: black(蓝) native/converted, white(橙) native/converted
+  defs.appendChild(svgEl("radialGradient",{id:"gBlueNative", cx:"45%", cy:"35%", r:"65%"}));
+  const gBN = defs.lastChild;
+  gBN.appendChild(svgEl("stop",{offset:"0%",  "stop-color":"#ffffff", "stop-opacity":"1"}));
+  gBN.appendChild(svgEl("stop",{offset:"18%","stop-color":"#e8ebff", "stop-opacity":"1"}));
+  gBN.appendChild(svgEl("stop",{offset:"42%","stop-color":"rgb(75,72,165)", "stop-opacity":"0.95"})); // v10 blue native
+  gBN.appendChild(svgEl("stop",{offset:"74%","stop-color":"rgb(145,142,215)", "stop-opacity":"0.33"}));
+  gBN.appendChild(svgEl("stop",{offset:"100%","stop-color":"rgb(145,142,215)", "stop-opacity":"0"}));
+
+  defs.appendChild(svgEl("radialGradient",{id:"gBlueConv", cx:"45%", cy:"35%", r:"65%"}));
+  const gBC = defs.lastChild;
+  gBC.appendChild(svgEl("stop",{offset:"0%",  "stop-color":"#ffffff", "stop-opacity":"1"}));
+  gBC.appendChild(svgEl("stop",{offset:"18%","stop-color":"#dfe6ff", "stop-opacity":"1"}));
+  gBC.appendChild(svgEl("stop",{offset:"42%","stop-color":"rgb(108,115,251)", "stop-opacity":"0.98"})); // v4 blue converted
+  gBC.appendChild(svgEl("stop",{offset:"74%","stop-color":"rgb(170,175,255)", "stop-opacity":"0.36"}));
+  gBC.appendChild(svgEl("stop",{offset:"100%","stop-color":"rgb(170,175,255)", "stop-opacity":"0"}));
+
+  defs.appendChild(svgEl("radialGradient",{id:"gOrangeNative", cx:"45%", cy:"35%", r:"65%"}));
+  const gON = defs.lastChild;
+  gON.appendChild(svgEl("stop",{offset:"0%",  "stop-color":"#ffffff", "stop-opacity":"1"}));
+  gON.appendChild(svgEl("stop",{offset:"18%","stop-color":"#fff0d8", "stop-opacity":"1"}));
+  gON.appendChild(svgEl("stop",{offset:"42%","stop-color":"rgb(176,109,33)", "stop-opacity":"0.95"})); // v4 orange native
+  gON.appendChild(svgEl("stop",{offset:"74%","stop-color":"rgb(220,160,85)", "stop-opacity":"0.30"}));
+  gON.appendChild(svgEl("stop",{offset:"100%","stop-color":"rgb(220,160,85)", "stop-opacity":"0"}));
+
+  defs.appendChild(svgEl("radialGradient",{id:"gOrangeConv", cx:"45%", cy:"35%", r:"65%"}));
+  const gOC = defs.lastChild;
+  gOC.appendChild(svgEl("stop",{offset:"0%",  "stop-color":"#ffffff", "stop-opacity":"1"}));
+  gOC.appendChild(svgEl("stop",{offset:"18%","stop-color":"#fff7e7", "stop-opacity":"1"}));
+  gOC.appendChild(svgEl("stop",{offset:"42%","stop-color":"rgb(242,219,155)", "stop-opacity":"0.98"})); // v10 orange converted
+  gOC.appendChild(svgEl("stop",{offset:"74%","stop-color":"rgb(255,240,200)", "stop-opacity":"0.33"}));
+  gOC.appendChild(svgEl("stop",{offset:"100%","stop-color":"rgb(255,240,200)", "stop-opacity":"0"}));
+
+  // link gradients
+  defs.appendChild(svgEl("linearGradient",{id:"gLinkBlue", x1:"0%", y1:"0%", x2:"100%", y2:"0%"}));
+  const gLB = defs.lastChild;
+  gLB.appendChild(svgEl("stop",{offset:"0%","stop-color":"#eef0ff","stop-opacity":"1"}));
+  gLB.appendChild(svgEl("stop",{offset:"45%","stop-color":"rgb(75,72,165)","stop-opacity":"0.55"}));
+  gLB.appendChild(svgEl("stop",{offset:"55%","stop-color":"rgb(75,72,165)","stop-opacity":"0.55"}));
+  gLB.appendChild(svgEl("stop",{offset:"100%","stop-color":"#eef0ff","stop-opacity":"1"}));
+
+  defs.appendChild(svgEl("linearGradient",{id:"gLinkOrange", x1:"0%", y1:"0%", x2:"100%", y2:"0%"}));
+  const gLO = defs.lastChild;
+  gLO.appendChild(svgEl("stop",{offset:"0%","stop-color":"#fff6e6","stop-opacity":"1"}));
+  gLO.appendChild(svgEl("stop",{offset:"45%","stop-color":"rgb(176,109,33)","stop-opacity":"0.48"}));
+  gLO.appendChild(svgEl("stop",{offset:"55%","stop-color":"rgb(176,109,33)","stop-opacity":"0.48"}));
+  gLO.appendChild(svgEl("stop",{offset:"100%","stop-color":"#fff6e6","stop-opacity":"1"}));
+
+  // filters
+  defs.appendChild(svgEl("filter",{id:"glowStrong", x:"-80%", y:"-80%", width:"260%", height:"260%"}));
+  const fGS = defs.lastChild;
+  fGS.appendChild(svgEl("feGaussianBlur",{stdDeviation:"2.2", result:"b1"}));
+  fGS.appendChild(svgEl("feMerge",{}));
+  const mGS = fGS.lastChild;
+  mGS.appendChild(svgEl("feMergeNode",{in:"b1"}));
+  mGS.appendChild(svgEl("feMergeNode",{in:"SourceGraphic"}));
+
+  defs.appendChild(svgEl("filter",{id:"glowSoft", x:"-80%", y:"-80%", width:"260%", height:"260%"}));
+  const fGSo = defs.lastChild;
+  fGSo.appendChild(svgEl("feGaussianBlur",{stdDeviation:"1.2", result:"b1"}));
+  fGSo.appendChild(svgEl("feMerge",{}));
+  const mGSo = fGSo.lastChild;
+  mGSo.appendChild(svgEl("feMergeNode",{in:"b1"}));
+  mGSo.appendChild(svgEl("feMergeNode",{in:"SourceGraphic"}));
+
+  defs.appendChild(svgEl("filter",{id:"glowLine", x:"-80%", y:"-80%", width:"260%", height:"260%"}));
+  const fGL = defs.lastChild;
+  fGL.appendChild(svgEl("feGaussianBlur",{stdDeviation:"1.0", result:"b1"}));
+  fGL.appendChild(svgEl("feMerge",{}));
+  const mGL = fGL.lastChild;
+  mGL.appendChild(svgEl("feMergeNode",{in:"b1"}));
+  mGL.appendChild(svgEl("feMergeNode",{in:"SourceGraphic"}));
+
+  els.board.appendChild(defs);
+
   // grid lines
   for (let i=0;i<N;i++){
     const x = padding + i*step;
@@ -1352,8 +1533,18 @@ function render(){
     const a = state.points[l.aKey], b = state.points[l.bKey];
     if (!a || !b) continue;
     const A = toSvg(a.x,a.y), B = toSvg(b.x,b.y);
-    const stroke = l.owner===0 ? "#111827" : "#6b7280";
-    els.board.appendChild(svgEl("line",{x1:A.sx,y1:A.sy,x2:B.sx,y2:B.sy,stroke, "stroke-width":3, opacity:"0.95", class: `line ${l.owner===0?"black":"white"}`}));
+    const isDiagg = isDiaggonal(a,b);
+    // 直线用纯色更稳（避免渐变/滤镜导致“看不见”）；斜线用渐变更有星座感
+    const stroke = isDiagg ? (l.owner===0 ? "url(#gLinkBlue)" : "url(#gLinkOrange)")
+                          : (l.owner===0 ? "rgb(75,72,165)" : "rgb(176,109,33)");
+
+    els.board.appendChild(svgEl("line",{
+      x1:A.sx,y1:A.sy,x2:B.sx,y2:B.sy,
+      stroke,
+      "stroke-width":3.6,
+      opacity:"1",
+      class: `line ${l.owner===0?"black":"white"} ${isDiagg?"diag":"axis"} ${l.crossed?"crossed":""}`
+    }));
   }
 
   // selected highlight
@@ -1366,33 +1557,39 @@ function render(){
   // points
   for (const [k,p] of Object.entries(state.points)){
     const P = toSvg(p.x,p.y);
-    const baseFill = p.owner===0 ? "#111827" : "#f3f4f6";
-    const baseStroke = "#111827";
     const isConverted = p.state==="converted";
     const isIsolated = p.state==="isolated";
     const r = isConverted ? 7 : 8;
 
+    const isBlack = p.owner===0; // 黑方 = 蓝
+    const fill = isBlack
+      ? (isConverted ? "url(#gBlueConv)" : "url(#gBlueNative)")
+      : (isConverted ? "url(#gOrangeConv)" : "url(#gOrangeNative)");
+
+    const ringStroke = isBlack ? "rgb(75,72,165)" : "rgb(176,109,33)";
+
     if (isIsolated){
       els.board.appendChild(svgEl("circle",{
-        cx:P.sx, cy:P.sy, r:r+5, fill:"none", stroke:"#f59e0b", "stroke-width":3,
-        "stroke-dasharray":"6 4", opacity:"0.95", class:"isoRing"
+        cx:P.sx, cy:P.sy, r:r+5, fill:"none", stroke:ringStroke, "stroke-width":2.5,
+        "stroke-dasharray":"2.5 3.5", opacity:"0.95", class:"isoRing"
       }));
     }
 
     const c = svgEl("circle",{
       cx:P.sx, cy:P.sy, r,
-      fill:baseFill, stroke:baseStroke, "stroke-width":2,
+      fill: fill,
+      stroke: "rgba(255,255,255,0.10)", "stroke-width":1.2,
       "stroke-dasharray": isConverted ? "4 3" : "",
       opacity: isIsolated ? "0.95" : "1",
-      class: `pt ${p.owner===0?"black":"white"}`
+      class: `pt ${isBlack?"black":"white"} ${isConverted?"converted":"native"} ${isIsolated?"isolated":""}`
     });
     els.board.appendChild(c);
 
     if (isConverted){
       els.board.appendChild(svgEl("circle",{
         cx:P.sx, cy:P.sy, r:3,
-        fill: (p.owner===0 ? "#f9fafb" : "#111827"),
-        opacity:"0.9"
+        fill: "#ffffff",
+        opacity:"0.85"
       }));
     }
   }
