@@ -220,6 +220,31 @@ svg#board .line.diag{ stroke-dasharray: 4 6 !important; }
 /* 被穿过后的斜线：变为实线 */
 svg#board .line.diag.crossed{ stroke-dasharray: none !important; }
 
+
+/* ===== Turn indicator readability ===== */
+.turn, .turn-count, .round, .round-count {
+  color: #ffffff !important;
+  font-size: 18px !important;
+  font-weight: 600;
+}
+
+
+/* ===== Turn HUD override (force white) ===== */
+.turnHud{ color:#fff !important; font-size:18px !important; font-weight:600; }
+#turnNo.turnNo{ color:#fff !important; font-size:18px !important; font-weight:800 !important; }
+
+
+/* ===== Online panel small tweaks ===== */
+.onlinePanel .inp{
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(255,255,255,.18);
+  color:#fff;
+  border-radius:12px;
+  padding:10px 12px;
+  outline:none;
+}
+.onlinePanel .inp::placeholder{ color: rgba(255,255,255,.55); }
+
 </style>
 </head>
 <body>
@@ -234,7 +259,7 @@ svg#board .line.diag.crossed{ stroke-dasharray: none !important; }
     <div class="card">
       <div class="row-between">
         <div class="row" style="align-items:center;">
-          <div class="pill"><span style="font-weight:800;">模式</span>：<span style="font-weight:800;">本地单机对战</span></div>
+          
           <div class="muted">纯离线单文件：不依赖任何外部 CDN，电脑/手机浏览器直接打开即可。</div>
         </div>
         <div class="row">
@@ -257,14 +282,30 @@ svg#board .line.diag.crossed{ stroke-dasharray: none !important; }
               <span class="pill" id="pillBlack"><span class="dot"></span>黑方</span>
               <span class="pill" id="pillWhite"><span class="dot white"></span>白方</span>
             </div>
-            <div class="muted">回合：<span id="turnNo" style="font-weight:800;color:#111;"></span></div>
+            <div class="muted turnHud">回合：<span id="turnNo" class="turnNo"></span></div>
           </div>
 
           <div class="boardWrap">
             <svg id="board" viewBox="0 0 600 600" aria-label="board"></svg>
 
             <div class="overlay" id="overlay">
-              <div class="panel">
+              
+<div id="onlinePanel" class="panel onlinePanel" style="margin-top:10px;">
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      <span class="pill" style="padding:6px 10px;">线上对战（LeanCloud）</span>
+      <input id="roomInput" class="inp" placeholder="房间号（任意字符串）" style="min-width:160px;flex:1 1 160px;" />
+      <button id="btnJoinRoom" class="btn primary">加入/创建</button>
+      <button id="btnLeaveRoom" class="btn" style="display:none;">断开</button>
+    </div>
+    <div id="netStatus" class="muted" style="color:#fff;opacity:.9;font-size:14px;">未连接</div>
+  </div>
+  <div class="muted" style="margin-top:6px;color:#fff;opacity:.85;font-size:13px;line-height:1.35;">
+    说明：双方输入相同房间号即可对战。身份会保存在本机（断线重连不换边）。本版本为纯前端示例：不做反作弊，信息完全公开。
+  </div>
+</div>
+
+<div class="panel">
                 <div style="font-size:20px;font-weight:900;">游戏结束</div>
                 <div class="muted" id="winnerText" style="margin-top:4px;"></div>
 
@@ -363,7 +404,7 @@ svg#board .line.diag.crossed{ stroke-dasharray: none !important; }
       </div>
     </div>
 
-    <div class="muted" style="text-align:center;margin:12px 0;">Isolaton and Relation • 本地单机对战（纯离线单文件）</div>
+    <div class="muted" style="text-align:center;margin:12px 0;">Isolaton and Relation • （纯离线单文件）</div>
   </div>
 
 <script>
@@ -1654,6 +1695,415 @@ render();
 </div>
 
 </div>
+
+
+<!-- ===== LeanCloud (China) SDKs (CDN) ===== -->
+<script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.15.0/dist/av-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leancloud-realtime@5.0.0-rc.8/dist/im-browser.min.js"></script>
+
+
+<script>
+/* ===========================
+   Online PvP (LeanCloud CN)
+   - Frontend-only demo (GitHub Pages friendly)
+   - Uses Storage (snapshot) + Realtime (message sync)
+   =========================== */
+
+(function(){
+  // === 0) User config: fill in YOUR LeanCloud CN credentials ===
+  // 控制台 -> 设置 -> 应用凭证: App ID / App Key / Server URL
+  // Storage init (AV.init) requires serverURL. citeturn0search2
+  const LC = {
+    appId:  "blCRBtZV33tqvXCqIIe32x7H-gzGzoHsz",
+    appKey: "YquFYufKrOZogqx03pFLdvKD",
+    serverURL: "https://blcrbtzv.lc-cn-n1-shared.com", // 例：https://xxxx.lc-cn-n1-shared.com
+  };
+
+  // ===== UI refs =====
+  const roomInput = document.getElementById('roomInput');
+  const btnJoin = document.getElementById('btnJoinRoom');
+  const btnLeave = document.getElementById('btnLeaveRoom');
+  const netStatus = document.getElementById('netStatus');
+
+  function setNetStatus(t){ if(netStatus) netStatus.textContent = t; }
+  function show(el, on){ if(!el) return; el.style.display = on ? '' : 'none'; }
+
+  // ===== Identity persisted across disconnects =====
+  const LS_KEY = 'IAR_LC_IDENTITY_V1';
+  function getIdentity(){
+    try{
+      const raw = localStorage.getItem(LS_KEY);
+      if(raw){ return JSON.parse(raw); }
+    }catch(e){}
+    const id = {
+      deviceId: 'dev_' + Math.random().toString(16).slice(2) + '_' + Date.now().toString(16),
+      seatByRoom: {} // roomCode -> 'B' | 'W' | 'S'
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(id));
+    return id;
+  }
+  const identity = getIdentity();
+
+  // ===== LeanCloud SDK init =====
+  let AVReady = false;
+  function initLeanCloud(){
+    if(AVReady) return true;
+    if(!window.AV || !window.LeanCloudRealtime){
+      setNetStatus('缺少 LeanCloud SDK（请检查网络/CDN）');
+      return false;
+    }
+    if(LC.appId === 'YOUR_APP_ID'){
+      setNetStatus('请先在代码里填写 LeanCloud 的 appId/appKey/serverURL');
+      return false;
+    }
+    window.AV.init({ appId: LC.appId, appKey: LC.appKey, serverURL: LC.serverURL }); // citeturn0search2
+    AVReady = true;
+    return true;
+  }
+
+  // ===== Data model =====
+  const RoomClass = 'IAR_Room'; // in Storage: { code, state, version, players: [clientId], updatedAt }
+  // 注意：纯前端方案无法隐藏 appKey，需在控制台把 Class 权限设为“可创建/可更新/可查询”(公开) 才能工作；否则需要云引擎做鉴权。
+
+  let currentRoomCode = null;
+  let roomObj = null;
+  let realtime = null;
+  let client = null;
+  let conv = null;
+  let mySeat = 'S'; // 'B' black, 'W' white, 'S' spectator
+  let lastVersion = 0;
+  let ignoreLocalBroadcast = false;
+
+  // ===== Helpers: get/set game state from existing code =====
+  // 我们尽量“不改游戏逻辑”：只用现有的序列化/反序列化入口。
+  function hasStateAPI(){
+    return (typeof window.exportGameState === 'function' &&
+            typeof window.importGameState === 'function' &&
+            typeof window.renderAll === 'function');
+  }
+
+  // If your build uses different names, adapt here:
+  // exportGameState() -> plain object
+  // importGameState(obj) -> apply + render
+  // renderAll() -> re-render
+  if(!hasStateAPI()){
+    // Provide minimal fallback wrappers if author named them differently.
+    // Common candidates in our file: getStateSnapshot / loadStateSnapshot
+    if(typeof window.getStateSnapshot === 'function' && typeof window.loadStateSnapshot === 'function'){
+      window.exportGameState = window.getStateSnapshot;
+      window.importGameState = window.loadStateSnapshot;
+    }
+  }
+
+  function snapshot(){
+    if(typeof window.exportGameState !== 'function') return null;
+    try{ return window.exportGameState(); }catch(e){ return null; }
+  }
+  function applySnapshot(snap){
+    if(typeof window.importGameState !== 'function') return;
+    try{ window.importGameState(snap); }catch(e){ console.warn(e); }
+  }
+
+  // ===== Seat / turn enforcement =====
+  function currentTurnColor(){
+    // Try to read from existing globals
+    // Prefer window.state.turn or window.turn
+    try{
+      if(window.state && window.state.turn){ return window.state.turn; }
+      if(typeof window.turn === 'string') return window.turn;
+      // Try DOM: current turn indicator maybe '黑方/白方'
+      if(window.state && typeof window.state.currentPlayer === 'string') return window.state.currentPlayer;
+    }catch(e){}
+    return null;
+  }
+  function seatToTurn(seat){
+    return seat === 'B' ? 'black' : (seat === 'W' ? 'white' : null);
+  }
+
+  function canIAct(){
+    if(!conv) return true; // offline ok
+    const t = currentTurnColor();
+    const want = seatToTurn(mySeat);
+    return want && t && (t === want);
+  }
+
+  // Hook into existing UI: block clicks if not your turn when online
+  function installTurnGuard(){
+    const oldToast = window.toast || function(msg){ alert(msg); };
+    window.toast = function(msg){ oldToast(msg); };
+
+    const board = document.getElementById('board') || document.querySelector('svg');
+    if(!board) return;
+    board.addEventListener('pointerdown', function(e){
+      if(conv && !canIAct()){
+        e.preventDefault(); e.stopPropagation();
+        window.toast('当前不是你的回合');
+      }
+    }, true);
+  }
+
+  // ===== Storage ops =====
+  async function fetchRoom(code){
+    const q = new AV.Query(RoomClass);
+    q.equalTo('code', code);
+    const r = await q.first();
+    return r || null;
+  }
+
+  async function createRoom(code){
+    const obj = new AV.Object(RoomClass);
+    obj.set('code', code);
+    obj.set('version', 0);
+    obj.set('players', []);
+    obj.set('state', null);
+    await obj.save();
+    return obj;
+  }
+
+  async function saveSnapshotToRoom(obj, snap, version, players){
+    obj.set('state', snap);
+    obj.set('version', version);
+    if(players) obj.set('players', players);
+    await obj.save();
+  }
+
+  // ===== Realtime ops =====
+  async function connectRealtime(){
+    // LeanCloud realtime for browser: dist/im-browser.min.js provides LeanCloudRealtime global
+    // We'll use: new LeanCloudRealtime.Realtime({ appId, appKey, server }) per docs style. citeturn0search2
+    const { Realtime } = window.LeanCloudRealtime;
+    realtime = new Realtime({
+      appId: LC.appId,
+      appKey: LC.appKey,
+      server: LC.serverURL
+    });
+    client = await realtime.createIMClient(identity.deviceId);
+  }
+
+  async function joinConversation(code){
+    // Conversation unique by room code
+    const name = 'IAR_' + code;
+    // try find existing
+    const query = client.getQuery();
+    query.equalTo('name', name);
+    query.limit(1);
+    const list = await query.find();
+    if(list && list[0]){
+      conv = list[0];
+      await conv.join();
+    }else{
+      conv = await client.createConversation({
+        name,
+        members: [identity.deviceId],
+        transient: false,
+        unique: true
+      });
+    }
+
+    conv.on('message', function(message, conversation){
+      try{
+        const data = JSON.parse(message.text);
+        onRemoteMessage(data);
+      }catch(e){
+        // ignore
+      }
+    });
+
+    // Ask for sync
+    sendMsg({ type:'hello', from: identity.deviceId, ts: Date.now() });
+    sendMsg({ type:'sync_req', from: identity.deviceId, ts: Date.now() });
+  }
+
+  async function sendMsg(obj){
+    if(!conv) return;
+    try{
+      await conv.send({ text: JSON.stringify(obj) });
+    }catch(e){
+      console.warn('send failed', e);
+    }
+  }
+
+  // ===== Sync protocol =====
+  function onRemoteMessage(msg){
+    if(!msg || !msg.type) return;
+    if(msg.from === identity.deviceId) return;
+
+    if(msg.type === 'sync_full'){
+      if(typeof msg.version !== 'number' || !msg.state) return;
+      if(msg.version <= lastVersion) return;
+      lastVersion = msg.version;
+      ignoreLocalBroadcast = true;
+      applySnapshot(msg.state);
+      ignoreLocalBroadcast = false;
+      setNetStatus(`已同步（版本 ${lastVersion}）｜你是${mySeat==='B'?'黑':mySeat==='W'?'白':'观战'}`);
+      return;
+    }
+
+    if(msg.type === 'move'){
+      if(typeof msg.version !== 'number' || !msg.state) return;
+      if(msg.version <= lastVersion) return;
+      lastVersion = msg.version;
+      ignoreLocalBroadcast = true;
+      applySnapshot(msg.state);
+      ignoreLocalBroadcast = false;
+      return;
+    }
+
+    if(msg.type === 'seat'){
+      // seat assignment broadcast
+      if(msg.target === identity.deviceId && msg.seat){
+        mySeat = msg.seat;
+        identity.seatByRoom[currentRoomCode] = mySeat;
+        localStorage.setItem(LS_KEY, JSON.stringify(identity));
+        setNetStatus(`已连接｜你是${mySeat==='B'?'黑':mySeat==='W'?'白':'观战'}`);
+      }
+      return;
+    }
+  }
+
+  // ===== Seat assignment (best-effort) =====
+  async function decideSeat(){
+    // Prefer persisted seat
+    const saved = identity.seatByRoom[currentRoomCode];
+    if(saved){ mySeat = saved; return; }
+
+    const players = (roomObj.get('players') || []).slice();
+    // Ensure uniqueness
+    const hasMe = players.includes(identity.deviceId);
+    if(!hasMe) players.push(identity.deviceId);
+
+    // Determine seats by first two unique ids
+    const uniq = Array.from(new Set(players));
+    const idx = uniq.indexOf(identity.deviceId);
+    let seat = 'S';
+    if(idx === 0) seat = 'B';
+    else if(idx === 1) seat = 'W';
+
+    // Save + broadcast
+    mySeat = seat;
+    identity.seatByRoom[currentRoomCode] = mySeat;
+    localStorage.setItem(LS_KEY, JSON.stringify(identity));
+
+    // Save players list to room (so others can derive same order)
+    await saveSnapshotToRoom(roomObj, roomObj.get('state') || null, roomObj.get('version') || 0, uniq);
+
+    // Broadcast seat to myself for UI consistency (not required)
+    await sendMsg({ type:'seat', target: identity.deviceId, seat: mySeat, from: identity.deviceId, ts: Date.now() });
+  }
+
+  // ===== Intercept local moves to broadcast =====
+  function installBroadcastHook(){
+    // We hook after a successful action. In this codebase, there is usually a function advanceTurn() or finalizeAction().
+    // We'll monkey patch advanceTurn if present.
+    const fnName = (typeof window.advanceTurn === 'function') ? 'advanceTurn' :
+                   (typeof window.endTurn === 'function') ? 'endTurn' : null;
+    if(!fnName){
+      console.warn('No obvious turn-advance function found; online sync may not work until hooked.');
+      return;
+    }
+    const old = window[fnName];
+    window[fnName] = function(){
+      const ret = old.apply(this, arguments);
+
+      // After local state change & render, broadcast snapshot
+      if(conv && !ignoreLocalBroadcast){
+        const snap = snapshot();
+        if(snap){
+          lastVersion = (lastVersion || 0) + 1;
+          // Save to Storage for reconnect
+          saveSnapshotToRoom(roomObj, snap, lastVersion, roomObj.get('players') || null).catch(console.warn);
+          // Broadcast to opponent
+          sendMsg({ type:'move', from: identity.deviceId, version:lastVersion, state:snap, ts:Date.now() });
+        }
+      }
+      return ret;
+    };
+  }
+
+  // ===== Join/Leave workflow =====
+  async function joinRoom(){
+    const code = (roomInput.value || '').trim();
+    if(!code){ window.toast && window.toast('请输入房间号'); return; }
+    if(!initLeanCloud()) return;
+
+    try{
+      setNetStatus('连接中…');
+      currentRoomCode = code;
+
+      // Fetch or create Storage room
+      roomObj = await fetchRoom(code);
+      if(!roomObj) roomObj = await createRoom(code);
+
+      // Load latest snapshot if exists
+      const storedState = roomObj.get('state');
+      const storedVer = roomObj.get('version') || 0;
+      if(storedState && storedVer >= lastVersion){
+        lastVersion = storedVer;
+        applySnapshot(storedState);
+      }
+
+      // Realtime connect + join conversation
+      await connectRealtime();
+      await joinConversation(code);
+
+      // Decide seat
+      await decideSeat();
+
+      // Install hooks once
+      installTurnGuard();
+      installBroadcastHook();
+
+      show(btnLeave, true);
+      setNetStatus(`已连接｜你是${mySeat==='B'?'黑':mySeat==='W'?'白':'观战'}｜版本 ${lastVersion}`);
+
+      // Send full sync after join (if I'm first player)
+      const snap = snapshot();
+      if(snap && lastVersion === 0){
+        lastVersion = 1;
+        await saveSnapshotToRoom(roomObj, snap, lastVersion, roomObj.get('players') || null);
+        await sendMsg({ type:'sync_full', from: identity.deviceId, version:lastVersion, state:snap, ts:Date.now() });
+      }else{
+        // Ask others to sync if my snapshot older
+        await sendMsg({ type:'sync_req', from: identity.deviceId, ts:Date.now() });
+      }
+
+      // Respond to sync requests by sending newest snapshot
+      conv.on('message', function(message){
+        try{
+          const data = JSON.parse(message.text);
+          if(data && data.type === 'sync_req' && data.from !== identity.deviceId){
+            const snap2 = snapshot();
+            if(snap2){
+              sendMsg({ type:'sync_full', from: identity.deviceId, version:lastVersion, state:snap2, ts:Date.now() });
+            }
+          }
+        }catch(e){}
+      });
+
+    }catch(e){
+      console.warn(e);
+      setNetStatus('连接失败（请检查 appId/appKey/serverURL、网络、控制台权限）');
+    }
+  }
+
+  async function leaveRoom(){
+    try{
+      if(conv){ await conv.leave().catch(()=>{}); }
+      if(client){ await client.close().catch(()=>{}); }
+    }finally{
+      conv = null; client = null; realtime = null;
+      currentRoomCode = null; roomObj = null;
+      show(btnLeave, false);
+      setNetStatus('未连接');
+    }
+  }
+
+  // ===== Bind UI =====
+  if(btnJoin) btnJoin.addEventListener('click', joinRoom);
+  if(btnLeave) btnLeave.addEventListener('click', leaveRoom);
+
+})();
+</script>
 
 </body>
 </html>
