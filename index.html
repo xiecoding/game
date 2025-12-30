@@ -1832,9 +1832,9 @@ render();
   // 控制台 -> 设置 -> 应用凭证: App ID / App Key / Server URL
   // Storage init (AV.init) requires serverURL. 
   const LC = {
-    appId:  "blCRBtZV33tqvXCqIIe32x7H-gzGzoHsz",
-    appKey: "YquFYufKrOZogqx03pFLdvKD",
-    serverURL: "https://blcrbtzv.lc-cn-n1-shared.com", // 例：https://xxxx.lc-cn-n1-shared.com
+    appId:  "YOUR_APP_ID",
+    appKey: "YOUR_APP_KEY",
+    serverURL: "https://YOUR_APP_DOMAIN.lc-cn-n1-shared.com", // 例：https://xxxx.lc-cn-n1-shared.com
   };
 
   // ===== UI refs =====
@@ -1939,16 +1939,18 @@ render();
   }
 
   function canIAct(){
-    if(!conv) return true; // offline ok
+    if(!conv) return true;
     const t = currentTurnColor();
     const want = seatToTurn(mySeat);
-    return want && t && (t === want);
+    // If we cannot determine, do not hard-block interactions
+    if(!t || !want) return true;
+    return t === want;
   }
 
   // Hook into existing UI: block clicks if not your turn when online
   function installTurnGuard(){
-    const oldToast = window.toast || function(msg){ alert(msg); };
-    window.toast = function(msg){ oldToast(msg); };
+    const oldToast = (typeof window.toast === 'function') ? window.toast : function(msg){ alert(msg); };
+    window.toast = function(msg){ try{ oldToast(msg); } catch(e){ console.warn(e); alert(msg);} };
 
     const board = document.getElementById('board') || document.querySelector('svg');
     if(!board) return;
@@ -2020,7 +2022,9 @@ render();
 
     conv.on('message', function(message, conversation){
       try{
-        const data = JSON.parse(message.text);
+        const text = (typeof message.text === 'string') ? message.text : (typeof message.getText === 'function' ? message.getText() : null);
+        if(!text) return;
+        const data = JSON.parse(text);
         onRemoteMessage(data);
       }catch(e){
         // ignore
@@ -2034,9 +2038,22 @@ render();
 
   async function sendMsg(obj){
     if(!conv) return;
+    const payload = JSON.stringify(obj);
+    // AV.Realtime v5 expects a Message instance; use TextMessage when available
+    const AVx = window.AV;
+    const TextMessage = AVx && (AVx.TextMessage || (AVx.Realtime && AVx.Realtime.TextMessage));
     try{
-      await conv.send({ text: JSON.stringify(obj) });
+      if(TextMessage){
+        await conv.send(new TextMessage(payload));
+      }else{
+        // fallback: try sending plain string
+        await conv.send(payload);
+      }
     }catch(e){
+      // Retry with TextMessage if first attempt used string
+      try{
+        if(!TextMessage) throw e;
+      }catch(_){ }
       console.warn('send failed', e);
     }
   }
@@ -2188,7 +2205,9 @@ render();
       // Respond to sync requests by sending newest snapshot
       conv.on('message', function(message){
         try{
-          const data = JSON.parse(message.text);
+          const text = (typeof message.text === 'string') ? message.text : (typeof message.getText === 'function' ? message.getText() : null);
+        if(!text) return;
+        const data = JSON.parse(text);
           if(data && data.type === 'sync_req' && data.from !== identity.deviceId){
             const snap2 = snapshot();
             if(snap2){
