@@ -245,9 +245,126 @@ svg#board .line.diag.crossed{ stroke-dasharray: none !important; }
 }
 .onlinePanel .inp::placeholder{ color: rgba(255,255,255,.55); }
 
+
+/* ===== Prominent Room Bar ===== */
+.roomBar{
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  width: 100%;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0,0,0,.55);
+  border-bottom: 1px solid rgba(255,255,255,.12);
+}
+.roomBarInner{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 12px 12px;
+}
+.roomTitle{
+  color:#fff;
+  font-weight: 800;
+  letter-spacing: .5px;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+.roomRow{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+.roomLabel{
+  color: rgba(255,255,255,.9);
+  font-weight: 700;
+  font-size: 14px;
+}
+.roomInput{
+  flex: 1 1 220px;
+  min-width: 220px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(0,0,0,.28);
+  color:#fff;
+  outline: none;
+}
+.roomInput::placeholder{ color: rgba(255,255,255,.55); }
+.roomBtn{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color:#fff;
+  font-weight: 800;
+}
+.roomBtn.primary{
+  border-color: rgba(255,255,255,.28);
+  background: rgba(120,120,255,.20);
+}
+.roomBtn:active{ transform: translateY(1px); }
+.roomHint{
+  margin-top: 6px;
+  color: rgba(255,255,255,.82);
+  font-size: 13px;
+  line-height: 1.35;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+.roomStatus{
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.35);
+  border: 1px solid rgba(255,255,255,.12);
+  color:#fff;
+  font-weight: 700;
+}
+.roomBarToggle{
+  position:absolute;
+  right: 10px;
+  top: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(0,0,0,.20);
+  color:#fff;
+  cursor:pointer;
+}
+.roomBar.collapsed .roomBarInner{ display:none; }
+.roomBar.collapsed .roomBarToggle{ top: 8px; }
+.roomBar.collapsed .roomBarToggle{ transform: rotate(180deg); }
+@media (max-width: 520px){
+  .roomStatus{ margin-left: 0; }
+  .roomInput{ min-width: 160px; }
+}
+
 </style>
 </head>
 <body>
+
+<!-- ===== Online Room Bar (Prominent UI) ===== -->
+<div id="roomBar" class="roomBar">
+  <div class="roomBarInner">
+    <div class="roomTitle">联网对战</div>
+    <div class="roomRow">
+      <label class="roomLabel" for="roomInput">房间号</label>
+      <input id="roomInput" class="roomInput" placeholder="例如：test123（两人输入同一房间号）" autocomplete="off" />
+      <button id="btnJoinRoom" class="roomBtn primary">加入 / 创建</button>
+      <button id="btnLeaveRoom" class="roomBtn">断开</button>
+    </div>
+    <div class="roomHint">
+      玩法：两名玩家输入 <b>相同房间号</b> → 点击“加入 / 创建”即可匹配；断线重连会保持身份。
+      <span id="netStatus" class="roomStatus">未连接</span>
+    </div>
+  </div>
+  <button id="roomBarToggle" class="roomBarToggle" title="收起/展开">▲</button>
+</div>
+
   <div class="toast" id="toast" style="display:none">
     <div class="toastbox">
       <div id="toastMsg" style="word-break:break-word;"></div>
@@ -290,17 +407,7 @@ svg#board .line.diag.crossed{ stroke-dasharray: none !important; }
 
             <div class="overlay" id="overlay">
               
-<div id="onlinePanel" class="panel onlinePanel" style="margin-top:10px;">
-  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
-    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-      <span class="pill" style="padding:6px 10px;">线上对战（LeanCloud）</span>
-      <input id="roomInput" class="inp" placeholder="房间号（任意字符串）" style="min-width:160px;flex:1 1 160px;" />
-      <button id="btnJoinRoom" class="btn primary">加入/创建</button>
-      <button id="btnLeaveRoom" class="btn" style="display:none;">断开</button>
-    </div>
-    <div id="netStatus" class="muted" style="color:#fff;opacity:.9;font-size:14px;">未连接</div>
-  </div>
-  <div class="muted" style="margin-top:6px;color:#fff;opacity:.85;font-size:13px;line-height:1.35;">
+<div class="muted" style="margin-top:6px;color:#fff;opacity:.85;font-size:13px;line-height:1.35;">
     说明：双方输入相同房间号即可对战。身份会保存在本机（断线重连不换边）。本版本为纯前端示例：不做反作弊，信息完全公开。
   </div>
 </div>
@@ -2113,6 +2220,21 @@ render();
   if(btnJoin) btnJoin.addEventListener('click', joinRoom);
   if(btnLeave) btnLeave.addEventListener('click', leaveRoom);
 
+})();
+</script>
+
+
+<script>
+(function(){
+  const bar = document.getElementById('roomBar');
+  const t = document.getElementById('roomBarToggle');
+  if(bar && t){
+    t.addEventListener('click', ()=>{
+      bar.classList.toggle('collapsed');
+      t.textContent = bar.classList.contains('collapsed') ? '▼' : '▲';
+    });
+  }
+  // show leave button only after connected (script will handle display too); but keep visible for clarity
 })();
 </script>
 
