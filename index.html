@@ -1713,6 +1713,7 @@ render();
   }
 })();
 </script>
+<script>
 /* ===========================
    Online PvP (LeanCloud CN)
    - Frontend-only demo (GitHub Pages friendly)
@@ -1722,7 +1723,7 @@ render();
 (function(){
   // === 0) User config: fill in YOUR LeanCloud CN credentials ===
   // 控制台 -> 设置 -> 应用凭证: App ID / App Key / Server URL
-  // Storage init (AV.init) requires serverURL. citeturn0search2
+  // Storage init (AV.init) requires serverURL. 
   const LC = {
     appId:  "YOUR_APP_ID",
     appKey: "YOUR_APP_KEY",
@@ -1766,7 +1767,7 @@ render();
       setNetStatus('请先在代码里填写 LeanCloud 的 appId/appKey/serverURL');
       return false;
     }
-    window.AV.init({ appId: LC.appId, appKey: LC.appKey, serverURL: LC.serverURL }); // citeturn0search2
+    window.AV.init({ appId: LC.appId, appKey: LC.appKey, serverURL: LC.serverURL }); // 
     AVReady = true;
     return true;
   }
@@ -1880,7 +1881,7 @@ render();
   // ===== Realtime ops =====
   async function connectRealtime(){
     // LeanCloud realtime for browser: dist/im-browser.min.js provides LeanCloudRealtime global
-    // We'll use: new LeanCloudRealtime.Realtime({ appId, appKey, server }) per docs style. citeturn0search2
+    // We'll use: new LeanCloudRealtime.Realtime({ appId, appKey, server }) per docs style. 
     const Realtime = window.AV.Realtime;
     realtime = new Realtime({
       appId: LC.appId,
