@@ -1707,9 +1707,9 @@ render();
 <script>
 // SDK load guard (for quick diagnosis)
 (function(){
-  const ok = !!(window.AV && window.LeanCloudRealtime);
+  const ok = !!(window.AV && window.AV.Realtime);
   if(!ok){
-    console.warn("[LeanCloud] SDK not loaded. Please ensure ./lib/leancloud/av-min.js and im-browser.min.js exist.");
+    console.warn("[LeanCloud] SDK not loaded (expect AV + AV.Realtime). Please ensure ./lib/leancloud/av-min.js and im-browser.min.js exist.");
   }
 })();
 </script>
@@ -1758,7 +1758,7 @@ render();
   let AVReady = false;
   function initLeanCloud(){
     if(AVReady) return true;
-    if(!window.AV || !window.LeanCloudRealtime){
+    if(!window.AV || !window.AV.Realtime){
       setNetStatus('缺少 LeanCloud SDK（请检查网络/CDN）');
       return false;
     }
@@ -1881,7 +1881,7 @@ render();
   async function connectRealtime(){
     // LeanCloud realtime for browser: dist/im-browser.min.js provides LeanCloudRealtime global
     // We'll use: new LeanCloudRealtime.Realtime({ appId, appKey, server }) per docs style. citeturn0search2
-    const { Realtime } = window.LeanCloudRealtime;
+    const Realtime = window.AV.Realtime;
     realtime = new Realtime({
       appId: LC.appId,
       appKey: LC.appKey,
